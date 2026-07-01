@@ -57,16 +57,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:14p
 .tab-content{display:none;}.tab-content.active{display:block;}
 
 /* UPLOAD BAR */
-.upload-bar{padding:8px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   border-bottom:1px solid rgba(255,255,255,.04);}
-.upload-lbl{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;}
-.upload-btn{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;
   padding:5px 12px;border:1px solid var(--border);background:transparent;
   color:#8FCFBA;border-radius:3px;cursor:pointer;transition:all .15s;}
-.upload-btn:hover{border-color:var(--acc2);color:var(--acc2);}
 #fileInput{display:none;}
-.upload-msg{font-family:var(--mono);font-size:10px;color:#8FCFBA;}
-.upload-msg b{color:var(--acc2);}
 
 main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 .sec{font-family:var(--mono);font-size:9px;letter-spacing:4px;color:#8FCFBA;
@@ -368,7 +362,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 <header>
   <div>
     <div class="logo">SIGNAL MATRIX <span style="font-size:10px;color:var(--muted)">V2</span></div>
-    <div class="logo-sub">GOOGLE SHEETS · LIVE · AUTO-UPDATE</div>
+    <div class="logo-sub">SUPABASE · LIVE · AUTO-UPDATE</div>
   </div>
   <div class="hdr-r">
     <div class="ml-badge" id="mlBadge">ML —</div>
@@ -379,7 +373,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 
 <div class="status-bar">
   <span class="status-lbl">Data Source</span>
-  <span class="status-val ok" id="sheetStatus">Google Sheets · stock_history</span>
+  <span class="status-val ok" id="sheetStatus">Supabase · stock_signals</span>
   <span class="status-lbl" style="margin-left:10px">Records</span>
   <span class="status-val ok" id="recordCount">—</span>
   <span class="status-lbl" style="margin-left:10px">Updated</span>
@@ -387,12 +381,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="refresh-btn" id="refreshBtn" onclick="loadFromSheet()">↻ Refresh</button>
 </div>
 
-<div class="upload-bar">
-  <span class="upload-lbl">Append CSV</span>
-  <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 เลือกไฟล์ CSV</button>
-  <input type="file" id="fileInput" accept=".csv" multiple onchange="handleUpload(this.files)">
-  <span class="upload-msg" id="uploadMsg">เลือก dashboard_export_*.csv ใหม่ → append เข้า Sheet อัตโนมัติ</span>
-</div>
 
 <!-- TABS -->
 <div class="tab-bar">
@@ -507,23 +495,10 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
       oninput="filterStockLatest()"
       style="font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
       border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:150px;">
-    <button class="ml-export-btn" onclick="exportStockLatestCSV()"
-      style="padding:7px 18px;font-size:9px;margin-left:auto;">
-      📥 Export → Sheet Summary
-    </button>
-    <button class="ml-export-btn" onclick="exportStockLatestCSV('new')"
-      style="padding:7px 18px;font-size:9px;border-color:rgba(0,255,178,.5);color:var(--acc);background:rgba(0,255,178,.08);">
-      ✨ Export เฉพาะรายการใหม่
-    </button>
+
   </div>
 
-  <!-- cost_price note -->
-  <div style="margin-bottom:10px;padding:8px 14px;background:rgba(41,182,246,.05);border:1px solid rgba(41,182,246,.15);border-radius:5px;font-family:var(--mono);font-size:9px;color:#8FCFBA;line-height:1.9;">
-    💡 <b style="color:var(--acc2)">Auto-fill จาก Portfolio:</b><br>
-    🟢 <b style="color:var(--acc)">ถือต่อ / ซื้อเพิ่ม</b> — cost_price + pnl_pct คำนวณให้อัตโนมัติจากราคาทุนใน port<br>
-    🟠 <b style="color:var(--warn)">ซื้อเพิ่ม</b> — cost_price = ราคาเฉลี่ย broker (แก้เป็นราคาใหม่ก่อน import ได้)<br>
-    🔴 <b style="color:var(--tp)">ขายหมด</b> — ว่างไว้ กรอก cost_price + pnl_pct จริงเองหลัง export
-  </div>
+
 
   <div class="sl-table-wrap">
     <table class="sl-table">
@@ -550,8 +525,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     border:1px solid rgba(206,147,216,.18);border-radius:6px;font-family:var(--mono);
     font-size:9px;color:#8FCFBA;line-height:1.8;">
     📊 <span style="color:var(--acc)">คะแนนกำไร</span> = Composite ML Score (เหมือน Tab Signal Matrix) · เรียงมากสุดก่อน<br>
-    🤖 <span style="color:var(--purple)">AI แนะนำ</span> = วิเคราะห์อัตโนมัติจาก RSI · Heat · %EMA50 · Momentum · ML Score<br>
-    🔄 <span style="color:var(--acc2)">Feedback Loop:</span> Export → เพิ่ม cost_price + pnl_pct → paste Sheet summary → Train ML → model แม่นขึ้น
+    🤖 <span style="color:var(--purple)">AI แนะนำ</span> = วิเคราะห์อัตโนมัติจาก RSI · Heat · %EMA50 · Momentum · ML Score
   </div>
 </main>
 </div>
@@ -592,7 +566,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <!-- Action buttons -->
   <div class="ml-header-row">
     <button class="ml-train-btn" id="trainBtn" onclick="runMLTrain()">⚡ Train ML</button>
-    <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Export ml_config.json</button>
+    <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
     <span class="ml-status-txt" id="mlStatusTxt">กด Train เพื่อเริ่ม Algorithm 4 ขั้นตอน</span>
   </div>
 
@@ -716,22 +690,9 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     </table>
   </div>
 
-  <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-    <button class="ml-export-btn" onclick="exportSummaryCSV()" style="padding:10px 22px;">
-      📥 Export Summary CSV
-    </button>
-    <button class="ml-export-btn" onclick="exportSummaryCSV('filtered')" style="padding:10px 22px;border-color:rgba(41,182,246,.5);color:var(--acc2);background:rgba(41,182,246,.08);">
-      📥 Export ตามที่ Filter
-    </button>
-    <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">→ save ลง Google Drive · นำเข้า Sheet summary</span>
-  </div>
 
-  <div style="margin-top:16px;padding:12px 16px;background:rgba(206,147,216,.06);border:1px solid rgba(206,147,216,.2);border-radius:6px;">
-    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--purple);text-transform:uppercase;margin-bottom:6px">💡 Feedback Loop</div>
-    <div style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.8">
-      บันทึก trade จริงใน Sheet tab "summary" → กด Train ML ใหม่ → accuracy ปรับอัตโนมัติ → threshold เปลี่ยน → model แม่นขึ้นเรื่อยๆ
-    </div>
-  </div>
+
+
 </main>
 </div>
 
