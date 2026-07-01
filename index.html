@@ -936,8 +936,8 @@ async function loadFromSheet() {
     const [resSignals, resPort, resSum] = await Promise.all([
       // stock_signals 30 วันล่าสุด join symbols
       fetch(
-        `${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc`,
-        { headers: sb._hdr() }
+        `${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc&limit=5000`,
+        { headers: { ...sb._hdr(), 'Range-Unit': 'items', 'Range': '0-4999' } }
       ),
       // portfolio ที่ active
       fetch(
