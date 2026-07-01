@@ -3254,7 +3254,7 @@ function aiLabel(r) {
 }
 
 /* ============================================================ EXPORT STOCK LATEST → SUMMARY CSV */
-function exportStockLatestCSV(mode) {
+async function exportStockLatestCSV(mode) {
   const latest = getLatest();
   const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
   latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
