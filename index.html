@@ -1,0 +1,3498 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL MATRIX V2</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Kanit:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060C12;--s1:#0C1820;--s2:#112030;
+  --border:rgba(0,255,178,0.10);
+  --acc:#00FFB2;--acc2:#29B6F6;--tp:#FF6B35;--warn:#FFC107;--danger:#F44336;
+  --muted:#7ABFAA;--text:#F5FFFC;--purple:#CE93D8;--teal:#80CBC4;
+  --mono:'IBM Plex Mono',monospace;--thai:'Kanit',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--thai);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,255,178,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,178,.02) 1px,transparent 1px);
+  background-size:44px 44px;pointer-events:none;z-index:0;}
+.app{position:relative;z-index:1;}
+
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;
+  border-bottom:1px solid var(--border);background:rgba(6,12,18,.96);
+  backdrop-filter:blur(20px);position:sticky;top:0;z-index:200;}
+.logo{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--acc);letter-spacing:2px;}
+.logo-sub{font-family:var(--mono);font-size:9px;letter-spacing:4px;color:var(--muted);margin-top:2px;}
+.hdr-r{display:flex;align-items:center;gap:14px;}
+.live{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;letter-spacing:3px;color:var(--acc);}
+.ldot{width:6px;height:6px;border-radius:50%;background:var(--acc);animation:blink 1.4s infinite;}
+@keyframes blink{0%,100%{opacity:1;box-shadow:0 0 6px var(--acc);}50%{opacity:.3;box-shadow:none;}}
+.clk{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.ml-badge{font-family:var(--mono);font-size:9px;padding:3px 8px;border:1px solid rgba(206,147,216,.4);
+  background:rgba(206,147,216,.1);color:var(--purple);border-radius:3px;letter-spacing:1px;display:none;}
+
+/* STATUS BAR */
+.status-bar{background:rgba(0,255,178,.04);border-bottom:1px solid rgba(0,255,178,.12);
+  padding:9px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.status-lbl{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;}
+.status-val{font-family:var(--mono);font-size:11px;font-weight:600;}
+.status-val.ok{color:var(--acc);}.status-val.err{color:var(--danger);}.status-val.loading{color:var(--warn);}
+.refresh-btn{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  padding:6px 14px;border:1px solid var(--acc);background:rgba(0,255,178,.08);
+  color:var(--acc);border-radius:3px;cursor:pointer;transition:all .15s;margin-left:auto;}
+.refresh-btn:hover{background:rgba(0,255,178,.2);}
+.refresh-btn:disabled{opacity:.4;cursor:not-allowed;}
+
+/* TABS */
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border);background:rgba(6,12,18,.9);
+  padding:0 24px;position:sticky;top:53px;z-index:190;}
+.tab-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  padding:12px 20px;border:none;background:transparent;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;}
+.tab-btn.active{color:var(--acc);border-bottom-color:var(--acc);}
+.tab-btn:hover{color:var(--text);}
+.tab-content{display:none;}.tab-content.active{display:block;}
+
+/* UPLOAD BAR */
+.upload-bar{padding:8px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  border-bottom:1px solid rgba(255,255,255,.04);}
+.upload-lbl{font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;}
+.upload-btn{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  padding:5px 12px;border:1px solid var(--border);background:transparent;
+  color:#8FCFBA;border-radius:3px;cursor:pointer;transition:all .15s;}
+.upload-btn:hover{border-color:var(--acc2);color:var(--acc2);}
+#fileInput{display:none;}
+.upload-msg{font-family:var(--mono);font-size:10px;color:#8FCFBA;}
+.upload-msg b{color:var(--acc2);}
+
+main{padding:20px 24px;max-width:1680px;margin:0 auto;}
+.sec{font-family:var(--mono);font-size:9px;letter-spacing:4px;color:#8FCFBA;
+  text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.sec::after{content:'';flex:1;height:1px;background:var(--border);}
+.div{height:1px;background:linear-gradient(90deg,transparent,rgba(0,255,178,.2),transparent);margin:18px 0;}
+
+/* ALERT SUMMARY TABLE */
+.alert-summary{background:var(--s1);border:1px solid rgba(255,193,7,.2);border-radius:6px;
+  margin-bottom:18px;overflow:hidden;}
+.alert-summary-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;border-bottom:1px solid rgba(255,255,255,.06);}
+.alert-summary-title{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--warn);text-transform:uppercase;}
+.alert-summary-count{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.alert-row{display:grid;grid-template-columns:70px 1fr auto;gap:12px;align-items:center;
+  padding:9px 16px;border-bottom:1px solid rgba(255,255,255,.03);}
+.alert-row:last-child{border-bottom:none;}
+.alert-sym{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);}
+.alert-change{font-family:var(--mono);font-size:11px;}
+.alert-time{font-family:var(--mono);font-size:9px;color:var(--muted);}
+.no-alerts{padding:12px 16px;font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;}
+
+/* KPI */
+.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:18px;}
+.kpi{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:14px 16px;position:relative;overflow:hidden;}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.kpi.g::before{background:var(--acc)}.kpi.b::before{background:var(--acc2)}.kpi.o::before{background:var(--tp)}.kpi.w::before{background:var(--warn)}.kpi.r::before{background:var(--danger)}
+.kpi-lbl{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#8FCFBA;text-transform:uppercase;margin-bottom:7px;}
+.kpi-val{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;margin-bottom:4px;}
+.kpi.g .kpi-val{color:var(--acc)}.kpi.b .kpi-val{color:var(--acc2)}.kpi.o .kpi-val{color:var(--tp)}.kpi.w .kpi-val{color:var(--warn)}.kpi.r .kpi-val{color:var(--danger)}
+.kpi-sub{font-family:var(--mono);font-size:10px;color:#8FCFBA;}
+
+/* RANK CARDS */
+.rank-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
+.rcard{background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  display:grid;grid-template-columns:54px 180px 1fr 300px 104px;
+  gap:0 14px;align-items:center;padding:14px 18px;transition:border-color .2s;}
+.rcard:hover{border-color:rgba(0,255,178,.25);}
+.rcard.r1{border-color:rgba(255,193,7,.3)}.rcard.r2{border-color:rgba(176,176,176,.2)}.rcard.r3{border-color:rgba(205,127,50,.2)}
+.c-rank{text-align:center;}
+.rnum{font-family:var(--mono);font-size:22px;font-weight:700;}
+.r1 .rnum{color:#FFC107}.r2 .rnum{color:#B0B0B0}.r3 .rnum{color:#CD7F32}
+.rnum.dim{color:var(--muted);font-size:17px;}
+.medal{font-size:17px;display:block;line-height:1;margin-bottom:2px;}
+.c-info .sym{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--text);letter-spacing:1px;}
+.c-info .grp{font-family:var(--mono);font-size:9px;color:#8FCFBA;margin-top:3px;}
+.c-info .act{margin-top:7px;}
+.break-title{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;margin-bottom:7px;}
+.brows{display:flex;flex-direction:column;gap:5px;}
+.brow{display:flex;align-items:center;gap:7px;}
+.blbl{font-family:var(--mono);font-size:10px;color:#8FCFBA;width:48px;text-align:right;flex-shrink:0;}
+.btrack{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;min-width:60px;}
+.bfill{height:100%;border-radius:3px;}
+.bval{font-family:var(--mono);font-size:10px;font-weight:700;width:44px;text-align:right;flex-shrink:0;}
+.chip{font-family:var(--mono);font-size:11px;font-weight:600;padding:4px 10px;border-radius:3px;border:1px solid;display:inline-block;}
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+.pricebox{font-family:var(--mono);font-size:10px;color:#8FCFBA;margin-top:5px;}
+.pricebox b{font-size:12px;color:var(--text);}
+.c-score{text-align:right;}
+.score-lbl{font-family:var(--mono);font-size:8px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;margin-bottom:4px;}
+.score-val{font-family:var(--mono);font-size:32px;font-weight:700;line-height:1;margin-bottom:3px;}
+.score-sub{font-family:var(--mono);font-size:10px;color:#8FCFBA;}
+.grade{display:inline-block;margin-top:6px;font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 10px;border-radius:3px;}
+.ap{padding:3px 9px;border-radius:3px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:1px;}
+.ap-BUY{background:rgba(0,255,178,.12);color:var(--acc);border:1px solid rgba(0,255,178,.3);}
+.ap-TP{background:rgba(255,107,53,.12);color:var(--tp);border:1px solid rgba(255,107,53,.3);}
+.ap-W{background:rgba(255,193,7,.1);color:var(--warn);border:1px solid rgba(255,193,7,.25);}
+
+/* ENTRY/EXIT BOX */
+.ebox{display:flex;flex-direction:column;gap:4px;margin-top:8px;
+  padding:8px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:4px;}
+.ebox-row{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;}
+.elbl{color:#8FCFBA;width:52px;flex-shrink:0;font-size:9px;letter-spacing:1px;}
+.eval{color:var(--text);}
+.eval small{color:var(--muted);font-size:8px;}
+
+/* FILTER */
+.fbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.fb{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;
+  padding:6px 12px;border:1px solid var(--border);background:transparent;
+  color:var(--muted);border-radius:3px;cursor:pointer;transition:all .15s;}
+.fb:hover,.fb.on{border-color:var(--acc);color:var(--acc);background:rgba(0,255,178,.06);}
+
+/* TIMELINE */
+.tl-wrap{overflow-x:auto;}
+.tl-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;}
+.tl-table th{text-align:left;padding:8px 12px;font-size:9px;letter-spacing:2px;color:#8FCFBA;
+  text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:600;}
+.tl-table td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.03);font-size:11px;color:#C8EEE6;}
+.tl-table tbody tr:hover{background:rgba(0,255,178,.03);}
+
+/* SYM FILTER */
+.sym-filter-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.sfb{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:4px 10px;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  border-radius:3px;cursor:pointer;transition:all .15s;}
+.sfb:hover,.sfb.on{border-color:var(--acc);color:var(--acc);background:rgba(0,255,178,.06);}
+#symSearch{font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
+  border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:150px;}
+
+/* ===================== TAB 2: PORTFOLIO ===================== */
+.port-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}
+.port-kpi{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:14px 16px;}
+.port-kpi-lbl{font-family:var(--mono);font-size:8px;letter-spacing:3px;color:#8FCFBA;text-transform:uppercase;margin-bottom:6px;}
+.port-kpi-val{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1;}
+.port-table-wrap{overflow-x:auto;}
+.port-table{width:100%;border-collapse:collapse;font-family:var(--mono);}
+.port-table th{text-align:left;padding:10px 14px;font-size:9px;letter-spacing:2px;color:#8FCFBA;
+  text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap;}
+.port-table td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;vertical-align:middle;}
+.port-table tbody tr:hover{background:rgba(0,255,178,.03);}
+.port-sym{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text);}
+.port-grp{font-size:9px;color:var(--muted);margin-top:2px;}
+.action-tag{padding:4px 10px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1px;display:inline-block;}
+.at-add{background:rgba(0,255,178,.15);color:var(--acc);border:1px solid rgba(0,255,178,.3);}
+.at-hold{background:rgba(255,193,7,.1);color:var(--warn);border:1px solid rgba(255,193,7,.25);}
+.at-partial{background:rgba(255,107,53,.12);color:var(--tp);border:1px solid rgba(255,107,53,.3);}
+.at-sell{background:rgba(244,67,54,.15);color:var(--danger);border:1px solid rgba(244,67,54,.3);}
+
+/* ===================== TAB 3: ML ANALYZER ===================== */
+.ml-header-row{display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.ml-train-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  padding:10px 22px;border:1px solid var(--acc);background:rgba(0,255,178,.1);
+  color:var(--acc);border-radius:4px;cursor:pointer;transition:all .2s;font-weight:700;}
+.ml-train-btn:hover{background:rgba(0,255,178,.22);box-shadow:0 0 18px rgba(0,255,178,.2);}
+.ml-train-btn:disabled{opacity:.4;cursor:not-allowed;}
+.ml-export-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;
+  padding:10px 22px;border:1px solid var(--purple);background:rgba(206,147,216,.1);
+  color:var(--purple);border-radius:4px;cursor:pointer;transition:all .2s;font-weight:700;}
+.ml-export-btn:hover{background:rgba(206,147,216,.2);}
+.ml-export-btn:disabled{opacity:.4;cursor:not-allowed;}
+.ml-status-txt{font-family:var(--mono);font-size:11px;color:var(--muted);}
+
+.ml-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+.ml-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:18px 20px;}
+.ml-card-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:#8FCFBA;text-transform:uppercase;margin-bottom:14px;}
+
+/* Step cards */
+.ml-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.ml-step{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px;position:relative;}
+.ml-step.active-step{border-color:rgba(0,255,178,.4);box-shadow:0 0 20px rgba(0,255,178,.08);}
+.ml-step.done-step{border-color:rgba(0,255,178,.25);}
+.step-num{font-family:var(--mono);font-size:22px;font-weight:700;color:rgba(0,255,178,.15);line-height:1;margin-bottom:6px;}
+.step-title{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text);letter-spacing:1px;margin-bottom:4px;}
+.step-desc{font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.6;}
+.step-result{margin-top:10px;font-family:var(--mono);font-size:10px;}
+.step-badge{display:inline-block;padding:2px 8px;border-radius:3px;font-family:var(--mono);font-size:9px;letter-spacing:1px;font-weight:700;}
+.step-badge.pending{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid rgba(255,255,255,.1);}
+.step-badge.running{background:rgba(255,193,7,.12);color:var(--warn);border:1px solid rgba(255,193,7,.3);}
+.step-badge.done{background:rgba(0,255,178,.12);color:var(--acc);border:1px solid rgba(0,255,178,.3);}
+
+/* Weight bars (editable) */
+.w-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.w-lbl{font-family:var(--mono);font-size:10px;color:#8FCFBA;width:60px;flex-shrink:0;}
+.w-track{flex:1;height:10px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden;cursor:pointer;position:relative;}
+.w-fill{height:100%;border-radius:5px;transition:width .3s;}
+.w-val{font-family:var(--mono);font-size:11px;font-weight:700;width:42px;text-align:right;flex-shrink:0;}
+.w-corr{font-family:var(--mono);font-size:9px;color:var(--muted);width:60px;text-align:right;flex-shrink:0;}
+
+/* Correlation table */
+.corr-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.corr-table th{text-align:left;padding:7px 10px;font-size:9px;letter-spacing:2px;color:#8FCFBA;
+  border-bottom:1px solid var(--border);text-transform:uppercase;}
+.corr-table td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.03);}
+.corr-bar{display:inline-block;height:6px;border-radius:3px;vertical-align:middle;margin-left:6px;}
+
+/* Threshold boxes */
+.thresh-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.thresh-box{background:rgba(255,255,255,.03);border-radius:6px;padding:12px 14px;border:1px solid rgba(255,255,255,.07);}
+.thresh-label{font-family:var(--mono);font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:5px;}
+.thresh-val{font-family:var(--mono);font-size:22px;font-weight:700;line-height:1;margin-bottom:3px;}
+.thresh-sub{font-family:var(--mono);font-size:9px;color:var(--muted);}
+
+/* Accuracy chart */
+.acc-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.acc-action{font-family:var(--mono);font-size:10px;width:100px;flex-shrink:0;}
+.acc-track{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;}
+.acc-fill{height:100%;border-radius:4px;}
+.acc-pct{font-family:var(--mono);font-size:11px;font-weight:700;width:44px;text-align:right;flex-shrink:0;}
+.acc-n{font-family:var(--mono);font-size:9px;color:var(--muted);width:52px;text-align:right;flex-shrink:0;}
+
+/* ===================== TAB 4: SUMMARY HISTORY ===================== */
+.sum-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.sum-fb{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:5px 12px;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  border-radius:3px;cursor:pointer;transition:all .15s;}
+.sum-fb:hover,.sum-fb.on{border-color:var(--acc);color:var(--acc);background:rgba(0,255,178,.06);}
+#sumSearch{font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
+  border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:140px;}
+.sum-table-wrap{overflow-x:auto;}
+.sum-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;}
+.sum-table th{text-align:left;padding:9px 12px;font-size:9px;letter-spacing:2px;color:#8FCFBA;
+  text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:600;}
+.sum-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.03);}
+.sum-table tbody tr:hover{background:rgba(0,255,178,.03);}
+.outcome-good{color:var(--acc);font-weight:700;}
+.outcome-bad{color:var(--danger);font-weight:700;}
+.outcome-na{color:var(--muted);}
+
+.acc-chart-wrap{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
+.acc-mini-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:16px 18px;}
+.acc-mini-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:#8FCFBA;text-transform:uppercase;margin-bottom:12px;}
+
+/* ALERT POPUP */
+.alert-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;display:flex;align-items:center;justify-content:center;}
+.alert-box{background:var(--s1);border:1px solid var(--acc);border-radius:10px;padding:22px 26px;max-width:460px;width:90%;box-shadow:0 0 40px rgba(0,255,178,.2);}
+.alert-title{font-family:var(--mono);font-size:11px;letter-spacing:3px;color:var(--acc);text-transform:uppercase;margin-bottom:14px;}
+.alert-items{display:flex;flex-direction:column;gap:10px;margin-bottom:18px;}
+.alert-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:11px 13px;display:flex;align-items:center;gap:12px;}
+.alert-sym2{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--text);width:52px;}
+.alert-change{flex:1;font-family:var(--mono);font-size:11px;}
+.alert-close{width:100%;padding:10px;background:rgba(0,255,178,.12);border:1px solid rgba(0,255,178,.3);color:var(--acc);font-family:var(--mono);font-size:11px;letter-spacing:2px;border-radius:5px;cursor:pointer;transition:all .15s;}
+.alert-close:hover{background:rgba(0,255,178,.25);}
+
+/* LOADING */
+.loading-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:14px;}
+.spinner{width:32px;height:32px;border:2px solid rgba(0,255,178,.2);border-top-color:var(--acc);border-radius:50%;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.loading-txt{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:2px;}
+
+/* ===================== UPSIDE + SWAP CARDS ===================== */
+.upside-bar{display:flex;align-items:center;gap:6px;}
+.upside-track{flex:1;height:5px;background:rgba(255,255,255,.08);border-radius:3px;min-width:60px;}
+.upside-fill{height:5px;border-radius:3px;transition:width .4s;}
+.upside-val{font-family:var(--mono);font-size:10px;font-weight:700;min-width:36px;text-align:right;}
+.swap-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px 16px;
+  transition:border-color .2s;}
+.swap-card:hover{border-color:rgba(0,255,178,.3);}
+.swap-card.top{border-color:rgba(0,255,178,.35);background:rgba(0,255,178,.04);}
+.swap-sym{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--text);}
+.swap-grp{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:8px;}
+.swap-score{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--acc);margin:4px 0;}
+.swap-label{font-family:var(--mono);font-size:9px;color:#8FCFBA;letter-spacing:1px;text-transform:uppercase;}
+.swap-meta{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:6px;line-height:1.7;}
+.swap-badge{display:inline-block;padding:2px 7px;border-radius:3px;font-family:var(--mono);
+  font-size:8px;font-weight:700;letter-spacing:1px;margin-top:6px;}
+
+/* ===================== TAB: STOCK LATEST ===================== */
+.sl-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}
+.sl-table-wrap{overflow-x:auto;}
+.sl-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;white-space:nowrap;}
+.sl-table th{text-align:left;padding:9px 12px;font-size:9px;letter-spacing:2px;color:#8FCFBA;
+  text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:600;white-space:nowrap;}
+.sl-table td{padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.03);vertical-align:middle;}
+.sl-table tbody tr:hover{background:rgba(0,255,178,.03);}
+.sl-sym{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);}
+.sl-grp{font-size:9px;color:var(--muted);margin-top:2px;}
+.ai-tag{display:inline-block;padding:3px 8px;border-radius:3px;font-family:var(--mono);
+  font-size:9px;font-weight:700;letter-spacing:1px;border:1px solid;}
+.ai-tag.buy{background:rgba(0,255,178,.12);border-color:rgba(0,255,178,.35);color:var(--acc);}
+.ai-tag.tp{background:rgba(255,107,53,.12);border-color:rgba(255,107,53,.35);color:var(--tp);}
+.ai-tag.watch{background:rgba(255,193,7,.1);border-color:rgba(255,193,7,.3);color:var(--warn);}
+.ai-tag.strong{background:rgba(41,182,246,.12);border-color:rgba(41,182,246,.35);color:var(--acc2);}
+.score-pill{display:inline-block;padding:4px 10px;border-radius:3px;font-family:var(--mono);
+  font-size:13px;font-weight:700;border:1px solid;}
+
+/* Score chart in summary */
+.score-chart-wrap{background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  padding:18px 20px;margin-bottom:20px;}
+.score-chart-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:#8FCFBA;
+  text-transform:uppercase;margin-bottom:16px;}
+.sc-action-row{margin-bottom:14px;}
+.sc-action-label{font-family:var(--mono);font-size:10px;font-weight:700;margin-bottom:6px;}
+.sc-points{display:flex;flex-wrap:wrap;gap:5px;}
+.sc-dot{display:inline-flex;align-items:center;justify-content:center;
+  width:36px;height:36px;border-radius:4px;font-family:var(--mono);
+  font-size:11px;font-weight:700;cursor:default;transition:transform .15s;border:1px solid;}
+.sc-dot:hover{transform:scale(1.15);z-index:10;position:relative;}
+.sc-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.05);}
+.sc-leg-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;color:#8FCFBA;}
+.sc-leg-color{width:12px;height:12px;border-radius:2px;}
+
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);}
+
+@media(max-width:1100px){
+  .rcard{grid-template-columns:44px 140px 1fr;}.c-chips,.c-score{display:none;}
+  .port-summary{grid-template-columns:repeat(2,1fr);}
+  .kpi-row{grid-template-columns:repeat(3,1fr);}
+  .sl-kpi-row{grid-template-columns:repeat(2,1fr);}
+  .ml-steps{grid-template-columns:repeat(2,1fr);}
+  .ml-grid{grid-template-columns:1fr;}
+  .acc-chart-wrap{grid-template-columns:1fr;}
+}
+@media(max-width:700px){
+  .kpi-row{grid-template-columns:repeat(2,1fr);}main{padding:14px;}
+  .rcard{grid-template-columns:36px 1fr;}.c-break{display:none;}
+  .port-summary{grid-template-columns:repeat(2,1fr);}
+  .sl-kpi-row{grid-template-columns:repeat(2,1fr);}
+  .ml-steps{grid-template-columns:1fr 1fr;}
+  .thresh-grid{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div>
+    <div class="logo">SIGNAL MATRIX <span style="font-size:10px;color:var(--muted)">V2</span></div>
+    <div class="logo-sub">GOOGLE SHEETS · LIVE · AUTO-UPDATE</div>
+  </div>
+  <div class="hdr-r">
+    <div class="ml-badge" id="mlBadge">ML —</div>
+    <div class="live"><div class="ldot"></div>LIVE</div>
+    <div class="clk" id="clk"></div>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span class="status-lbl">Data Source</span>
+  <span class="status-val ok" id="sheetStatus">Google Sheets · stock_history</span>
+  <span class="status-lbl" style="margin-left:10px">Records</span>
+  <span class="status-val ok" id="recordCount">—</span>
+  <span class="status-lbl" style="margin-left:10px">Updated</span>
+  <span class="status-val" id="lastUpdated" style="color:var(--muted)">—</span>
+  <button class="refresh-btn" id="refreshBtn" onclick="loadFromSheet()">↻ Refresh</button>
+</div>
+
+<div class="upload-bar">
+  <span class="upload-lbl">Append CSV</span>
+  <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📂 เลือกไฟล์ CSV</button>
+  <input type="file" id="fileInput" accept=".csv" multiple onchange="handleUpload(this.files)">
+  <span class="upload-msg" id="uploadMsg">เลือก dashboard_export_*.csv ใหม่ → append เข้า Sheet อัตโนมัติ</span>
+</div>
+
+<!-- TABS -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('signal')">Signal Matrix</button>
+  <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
+  <button class="tab-btn" onclick="switchTab('stocklatest')">📊 สรุป Stock ล่าสุด</button>
+  <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
+  <button class="tab-btn" onclick="switchTab('summary')">📋 Summary History</button>
+</div>
+
+<!-- TAB 1: SIGNAL MATRIX -->
+<div id="tab-signal" class="tab-content active">
+<main>
+  <div class="sec">การเปลี่ยนแปลง Signal</div>
+  <div class="alert-summary" id="alertSummary">
+    <div class="alert-summary-hdr">
+      <span class="alert-summary-title">🔔 Signal Changes</span>
+      <span class="alert-summary-count" id="alertCount">กด Refresh เพื่อตรวจสอบ</span>
+    </div>
+    <div id="alertSummaryBody"><div class="no-alerts">—</div></div>
+  </div>
+  <div class="div"></div>
+  <div class="sec">ภาพรวม</div>
+  <div class="kpi-row" id="kpiRow"></div>
+  <div class="div"></div>
+  <div class="sec">อันดับกำไร</div>
+  <div class="fbar" id="fbar"></div>
+  <div class="rank-grid" id="rankGrid"></div>
+  <div class="div"></div>
+  <div class="sec">Timeline</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;">กรองหุ้น</span>
+    <div class="sym-filter-bar" id="symFilterBar"></div>
+    <input id="symSearch" type="text" placeholder="ค้นหา symbol..." oninput="filterTimeline()">
+  </div>
+  <div class="tl-wrap"><table class="tl-table">
+    <thead><tr>
+      <th>วันที่</th><th>Symbol</th><th>Action</th><th>Score</th><th>ราคา</th>
+    </tr></thead>
+    <tbody id="tlBody"></tbody>
+  </table></div>
+</main>
+</div>
+
+<!-- TAB 2: PORTFOLIO -->
+<div id="tab-portfolio" class="tab-content">
+<main>
+  <div class="sec" style="margin-top:4px">Portfolio · Capital Rotation</div>
+  <div class="port-summary" id="portSummary"></div>
+  <div class="div"></div>
+
+  <!-- Rotation Alert -->
+  <div id="rotationAlert" style="display:none;margin-bottom:14px;padding:12px 16px;
+    background:rgba(255,193,7,.07);border:1px solid rgba(255,193,7,.25);border-radius:6px;">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--warn);
+      text-transform:uppercase;margin-bottom:8px;">⚡ แนะนำ Capital Rotation</div>
+    <div id="rotationBody" style="font-family:var(--mono);font-size:10px;line-height:2"></div>
+  </div>
+
+  <div class="sec" style="display:flex;justify-content:space-between;align-items:center">
+    <span>หุ้นที่ถืออยู่ · เรียงตาม Upside</span>
+    <button class="refresh-btn" style="position:static;margin-left:0" onclick="loadFromSheet()">↻ Refresh ราคา</button>
+  </div>
+  <div class="port-table-wrap">
+    <table class="port-table">
+      <thead><tr>
+        <th>Symbol</th>
+        <th>ราคาทุน</th>
+        <th>ราคาปัจจุบัน</th>
+        <th>%P&L</th>
+        <th>ML Score</th>
+        <th>Health</th>
+        <th>Momentum</th>
+        <th>Trend</th>
+        <th>Upside</th>
+        <th>SL Price</th>
+        <th>Action</th>
+      </tr></thead>
+      <tbody id="portBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Best Swap Opportunities -->
+  <div style="margin-top:18px;">
+    <div class="sec">🎯 Best Swap Opportunities · upside สูงสุดในตลาดตอนนี้</div>
+    <div id="swapBody" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:10px;"></div>
+  </div>
+
+  <div id="portActionNote" style="margin-top:14px;font-family:var(--mono);font-size:9px;color:var(--muted);
+    background:rgba(255,255,255,.03);border-radius:4px;padding:10px 14px;line-height:2;">
+    📊 <span style="color:var(--acc)">Upside สูง (Score ต่ำ)</span> = โอกาสเข้าใหม่ ·
+    <span style="color:var(--warn)">Upside กลาง</span> = ถือต่อ ·
+    <span style="color:var(--tp)">Upside ต่ำ (Score สูง)</span> = พิจารณาออก ·
+    <span style="color:var(--danger)">🔴 SL hit</span> = ออกทันที หาตัวใหม่
+    <span id="mlThreshNote" style="color:var(--purple)"></span>
+  </div>
+</main>
+</div>
+
+<!-- TAB 3: STOCK LATEST -->
+<div id="tab-stocklatest" class="tab-content">
+<main>
+  <div class="sec">สรุป Stock ล่าสุด · แต่ละตัวในระบบ</div>
+  <div class="sl-kpi-row" id="slKpiRow"></div>
+  <div class="div"></div>
+
+  <!-- Filter + search + export row -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
+    <div id="slFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <input id="slSearch" type="text" placeholder="ค้นหา symbol..."
+      oninput="filterStockLatest()"
+      style="font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
+      border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:150px;">
+    <button class="ml-export-btn" onclick="exportStockLatestCSV()"
+      style="padding:7px 18px;font-size:9px;margin-left:auto;">
+      📥 Export → Sheet Summary
+    </button>
+    <button class="ml-export-btn" onclick="exportStockLatestCSV('new')"
+      style="padding:7px 18px;font-size:9px;border-color:rgba(0,255,178,.5);color:var(--acc);background:rgba(0,255,178,.08);">
+      ✨ Export เฉพาะรายการใหม่
+    </button>
+  </div>
+
+  <!-- cost_price note -->
+  <div style="margin-bottom:10px;padding:8px 14px;background:rgba(41,182,246,.05);border:1px solid rgba(41,182,246,.15);border-radius:5px;font-family:var(--mono);font-size:9px;color:#8FCFBA;line-height:1.9;">
+    💡 <b style="color:var(--acc2)">Auto-fill จาก Portfolio:</b><br>
+    🟢 <b style="color:var(--acc)">ถือต่อ / ซื้อเพิ่ม</b> — cost_price + pnl_pct คำนวณให้อัตโนมัติจากราคาทุนใน port<br>
+    🟠 <b style="color:var(--warn)">ซื้อเพิ่ม</b> — cost_price = ราคาเฉลี่ย broker (แก้เป็นราคาใหม่ก่อน import ได้)<br>
+    🔴 <b style="color:var(--tp)">ขายหมด</b> — ว่างไว้ กรอก cost_price + pnl_pct จริงเองหลัง export
+  </div>
+
+  <div class="sl-table-wrap">
+    <table class="sl-table">
+      <thead><tr>
+        <th>#</th>
+        <th>Symbol / Group</th>
+        <th>Date · Session</th>
+        <th>ราคา</th>
+        <th>Action</th>
+        <th>RSI</th>
+        <th>Heat</th>
+        <th>Risk</th>
+        <th>ML Score</th>
+        <th>Health</th>
+        <th>Trend</th>
+        <th>ทำจริง</th>
+        <th>คะแนนกำไร ↓</th>
+      </tr></thead>
+      <tbody id="slBody"></tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:12px;padding:10px 14px;background:rgba(206,147,216,.05);
+    border:1px solid rgba(206,147,216,.18);border-radius:6px;font-family:var(--mono);
+    font-size:9px;color:#8FCFBA;line-height:1.8;">
+    📊 <span style="color:var(--acc)">คะแนนกำไร</span> = Composite ML Score (เหมือน Tab Signal Matrix) · เรียงมากสุดก่อน<br>
+    🤖 <span style="color:var(--purple)">AI แนะนำ</span> = วิเคราะห์อัตโนมัติจาก RSI · Heat · %EMA50 · Momentum · ML Score<br>
+    🔄 <span style="color:var(--acc2)">Feedback Loop:</span> Export → เพิ่ม cost_price + pnl_pct → paste Sheet summary → Train ML → model แม่นขึ้น
+  </div>
+</main>
+</div>
+
+<!-- TAB 4: ML ANALYZER -->
+<div id="tab-ml" class="tab-content">
+<main>
+  <div class="sec">ML Algorithm · 4 ขั้นตอน</div>
+
+  <!-- Step cards -->
+  <div class="ml-steps" id="mlSteps">
+    <div class="ml-step" id="step1card">
+      <div class="step-num">01</div>
+      <div class="step-title">DATA COLLECTION</div>
+      <div class="step-desc">stock_history + summary<br>indicator ทุก session<br>action + ผลจริง</div>
+      <div class="step-result" id="step1result"><span class="step-badge pending">PENDING</span></div>
+    </div>
+    <div class="ml-step" id="step2card">
+      <div class="step-num">02</div>
+      <div class="step-title">CORRELATION</div>
+      <div class="step-desc">Pearson: indicator vs %EMA50<br>action accuracy จาก summary<br>หา indicator ที่สำคัญที่สุด</div>
+      <div class="step-result" id="step2result"><span class="step-badge pending">PENDING</span></div>
+    </div>
+    <div class="ml-step" id="step3card">
+      <div class="step-num">03</div>
+      <div class="step-title">WEIGHT + THRESHOLD</div>
+      <div class="step-desc">weight = |corr| / total<br>threshold ปรับตาม accuracy<br>auto calculate จากข้อมูลจริง</div>
+      <div class="step-result" id="step3result"><span class="step-badge pending">PENDING</span></div>
+    </div>
+    <div class="ml-step" id="step4card">
+      <div class="step-num">04</div>
+      <div class="step-title">ADAPTIVE</div>
+      <div class="step-desc">trade เพิ่ม → accuracy ปรับ<br>weight + threshold ปรับพร้อมกัน<br>Feedback loop สมบูรณ์แบบ</div>
+      <div class="step-result" id="step4result"><span class="step-badge pending">PENDING</span></div>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="ml-header-row">
+    <button class="ml-train-btn" id="trainBtn" onclick="runMLTrain()">⚡ Train ML</button>
+    <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Export ml_config.json</button>
+    <span class="ml-status-txt" id="mlStatusTxt">กด Train เพื่อเริ่ม Algorithm 4 ขั้นตอน</span>
+  </div>
+
+  <!-- Main grid -->
+  <div class="ml-grid">
+
+    <!-- Correlation -->
+    <div class="ml-card">
+      <div class="ml-card-title">Step 2 — Pearson Correlation vs %EMA50</div>
+      <div id="corrTable"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">กด Train เพื่อคำนวณ correlation</div></div>
+    </div>
+
+    <!-- Weights -->
+    <div class="ml-card">
+      <div class="ml-card-title">Step 3 — Weights (คลิก bar เพื่อปรับ manual)</div>
+      <div id="weightBars"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">กด Train เพื่อคำนวณ weights</div></div>
+      <div id="weightNote" style="margin-top:10px;font-family:var(--mono);font-size:9px;color:var(--muted)"></div>
+    </div>
+
+    <!-- Thresholds -->
+    <div class="ml-card">
+      <div class="ml-card-title">Step 3 — Thresholds (ปรับจาก accuracy จริง)</div>
+      <div class="thresh-grid" id="threshGrid">
+        <div class="thresh-box"><div class="thresh-label" style="color:var(--acc)">ซื้อเพิ่ม</div><div class="thresh-val" style="color:var(--acc)" id="tBuy">—</div><div class="thresh-sub">Score &lt; threshold</div></div>
+        <div class="thresh-box"><div class="thresh-label" style="color:var(--warn)">ถือต่อ</div><div class="thresh-val" style="color:var(--warn)" id="tHold">—</div><div class="thresh-sub">Score ช่วงกลาง</div></div>
+        <div class="thresh-box"><div class="thresh-label" style="color:var(--tp)">ขายบางส่วน</div><div class="thresh-val" style="color:var(--tp)" id="tPartial">—</div><div class="thresh-sub">Score &gt; threshold</div></div>
+        <div class="thresh-box"><div class="thresh-label" style="color:var(--danger)">ขายหมด</div><div class="thresh-val" style="color:var(--danger)" id="tSell">—</div><div class="thresh-sub">Score &gt; threshold</div></div>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7" id="threshNote">threshold ปรับตาม accuracy ของแต่ละ action จาก summary</div>
+    </div>
+
+    <!-- Accuracy -->
+    <div class="ml-card">
+      <div class="ml-card-title">Step 4 — Adaptive: Accuracy per Action</div>
+      <div id="accBars"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">กด Train เพื่อคำนวณ accuracy</div></div>
+      <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7" id="adaptNote">
+        ยิ่ง trade จริงเพิ่ม → accuracy สูงขึ้น → model แม่นขึ้นเรื่อยๆ
+      </div>
+    </div>
+  </div>
+
+  <!-- ML Config preview -->
+  <div class="ml-card" id="mlConfigPreview" style="display:none">
+    <div class="ml-card-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>ml_config.json Preview</span>
+      <button class="ml-export-btn" onclick="exportMLConfig()" style="padding:5px 14px;font-size:9px">💾 Download</button>
+    </div>
+    <pre id="mlConfigJson" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;overflow-x:auto;line-height:1.6;max-height:280px;overflow-y:auto;margin-top:8px"></pre>
+  </div>
+</main>
+</div>
+
+<!-- TAB 5: SUMMARY HISTORY -->
+<div id="tab-summary" class="tab-content">
+<main>
+  <div class="sec">Summary History · Validate ML ด้วยตาเอง</div>
+
+  <!-- Score Chart by Action -->
+  <div class="score-chart-wrap" id="scoreChartWrap">
+    <div class="score-chart-title">📊 คะแนนกำไร (Composite Score) แยกตาม Action</div>
+    <div id="scoreChartBody"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">โหลด summary...</div></div>
+    <div class="sc-legend">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;width:100%">กรอบ = ML Zone ณ ตอน trade</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(0,255,178,.9)"></div>BUY ZONE (score &lt; 42)</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(255,193,7,.9)"></div>HOLD ZONE (42–68)</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(255,107,53,.9)"></div>PARTIAL ZONE (68–82)</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(244,67,54,.9)"></div>SELL ZONE (&gt; 82)</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:6px;margin-bottom:4px;width:100%">พื้นหลัง = ผลลัพธ์จริง</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(41,182,246,.22);border:1px solid rgba(41,182,246,.4)"></div>WIN ✅</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(244,67,54,.22);border:1px solid rgba(244,67,54,.4)"></div>LOSS ❌</div>
+      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2)"></div>PENDING ⏳</div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- Accuracy mini charts -->
+  <div class="acc-chart-wrap" id="accChartWrap">
+    <div class="acc-mini-card">
+      <div class="acc-mini-title">Action Accuracy (จาก summary)</div>
+      <div id="summaryAccBars"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">โหลด summary จาก Sheet...</div></div>
+    </div>
+    <div class="acc-mini-card">
+      <div class="acc-mini-title">Distribution by Action</div>
+      <div id="summaryDist"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">—</div></div>
+    </div>
+  </div>
+
+  <!-- Date range filter -->
+  <div class="sum-filter-row" style="margin-bottom:8px;">
+    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">ช่วงวันที่</span>
+    <input type="date" id="sumDateFrom" onchange="filterSummary()" style="font-family:var(--mono);font-size:10px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;color-scheme:dark;">
+    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">–</span>
+    <input type="date" id="sumDateTo" onchange="filterSummary()" style="font-family:var(--mono);font-size:10px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;color-scheme:dark;">
+    <button class="sum-fb" onclick="setDatePreset('7d')">7 วัน</button>
+    <button class="sum-fb" onclick="setDatePreset('30d')">30 วัน</button>
+    <button class="sum-fb" onclick="setDatePreset('mtd')">เดือนนี้</button>
+    <button class="sum-fb" onclick="setDatePreset('all')">ทั้งหมด</button>
+  </div>
+
+  <!-- Filters -->
+  <div class="sum-filter-row">
+    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
+    <div id="sumActionFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    <input id="sumSearch" type="text" placeholder="ค้นหา symbol..." oninput="filterSummary()">
+    <select id="sumOutcomeFilter" onchange="filterSummary()" style="font-family:var(--mono);font-size:9px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;">
+      <option value="ALL">All Outcome</option>
+      <option value="WIN">✅ Win</option>
+      <option value="LOSS">❌ Loss</option>
+      <option value="PENDING">⏳ Pending</option>
+    </select>
+    <span class="ml-status-txt" id="sumCount">—</span>
+  </div>
+
+  <div class="sum-table-wrap">
+    <table class="sum-table">
+      <thead><tr>
+        <th>วันที่</th><th>Symbol</th><th>AI Label</th><th>ทำจริง</th><th>ราคา</th><th>%P&L</th><th>Score ML</th><th>Outcome</th><th>หมายเหตุ</th>
+      </tr></thead>
+      <tbody id="sumBody"></tbody>
+    </table>
+  </div>
+
+  <div style="margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <button class="ml-export-btn" onclick="exportSummaryCSV()" style="padding:10px 22px;">
+      📥 Export Summary CSV
+    </button>
+    <button class="ml-export-btn" onclick="exportSummaryCSV('filtered')" style="padding:10px 22px;border-color:rgba(41,182,246,.5);color:var(--acc2);background:rgba(41,182,246,.08);">
+      📥 Export ตามที่ Filter
+    </button>
+    <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">→ save ลง Google Drive · นำเข้า Sheet summary</span>
+  </div>
+
+  <div style="margin-top:16px;padding:12px 16px;background:rgba(206,147,216,.06);border:1px solid rgba(206,147,216,.2);border-radius:6px;">
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--purple);text-transform:uppercase;margin-bottom:6px">💡 Feedback Loop</div>
+    <div style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.8">
+      บันทึก trade จริงใน Sheet tab "summary" → กด Train ML ใหม่ → accuracy ปรับอัตโนมัติ → threshold เปลี่ยน → model แม่นขึ้นเรื่อยๆ
+    </div>
+  </div>
+</main>
+</div>
+
+</div><!-- end .app -->
+
+<script>
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyLOxJT_jnGW4JassD86G4l8pOPD4lxbKU4pfHibrq7Fwi0oEdSGOOQtUxWTD_bFW0/exec';
+
+/* ============================================================ SUPABASE CONFIG */
+const SUPABASE_URL = 'https://dhnlnvppveotthhxkcdu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eAl3vSlnB14bv5gUazVn6A_mh3JoB4K';
+
+// Supabase REST API helper
+const sb = {
+  _hdr: () => ({
+    'Content-Type':  'application/json',
+    'apikey':        SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+  }),
+  // SELECT
+  async from(table) {
+    return {
+      _table: table, _filters: [], _order: null, _limit: null,
+      eq(col, val) { this._filters.push(`${col}=eq.${val}`); return this; },
+      neq(col, val){ this._filters.push(`${col}=neq.${val}`); return this; },
+      is(col, val) { this._filters.push(`${col}=is.${encodeURIComponent(val)}`); return this; },
+      order(col, { ascending=true }={}) { this._order = `${col}.${ascending?'asc':'desc'}`; return this; },
+      limit(n) { this._limit = n; return this; },
+      async select(cols='*') {
+        let url = `${SUPABASE_URL}/rest/v1/${this._table}?select=${cols}`;
+        this._filters.forEach(f => url += '&' + f);
+        if(this._order) url += '&order=' + this._order;
+        if(this._limit) url += '&limit=' + this._limit;
+        const res = await fetch(url, { headers: sb._hdr() });
+        const data = await res.json();
+        return { data: Array.isArray(data)?data:[], error: data.error||null };
+      },
+      // INSERT
+      async insert(rows) {
+        const body = Array.isArray(rows)?rows:[rows];
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/${this._table}`, {
+          method: 'POST',
+          headers: { ...sb._hdr(), 'Prefer': 'return=representation' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        return { data: Array.isArray(data)?data:[], error: data.error||null };
+      },
+      // UPSERT
+      async upsert(rows, { onConflict='' }={}) {
+        const body = Array.isArray(rows)?rows:[rows];
+        let url = `${SUPABASE_URL}/rest/v1/${this._table}`;
+        if(onConflict) url += `?on_conflict=${onConflict}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { ...sb._hdr(), 'Prefer': 'resolution=merge-duplicates,return=representation' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        return { data: Array.isArray(data)?data:[], error: data.error||null };
+      },
+      // UPDATE
+      async update(obj) {
+        let url = `${SUPABASE_URL}/rest/v1/${this._table}?`;
+        this._filters.forEach((f,i) => url += (i?'&':'') + f);
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: { ...sb._hdr(), 'Prefer': 'return=representation' },
+          body: JSON.stringify(obj),
+        });
+        const data = await res.json();
+        return { data: Array.isArray(data)?data:[], error: data.error||null };
+      },
+    };
+  },
+  // RPC (stored function)
+  async rpc(fn, params={}) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: sb._hdr(),
+      body: JSON.stringify(params),
+    });
+    const data = await res.json();
+    return { data, error: data.error||null };
+  },
+};
+
+/* ============================================================ TABS */
+function switchTab(tab) {
+  const tabs = ['signal','portfolio','stocklatest','ml','summary'];
+  tabs.forEach((t,i) => {
+    document.querySelectorAll('.tab-btn')[i].classList.toggle('active', t===tab);
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  if(tab==='portfolio') renderPortfolio();
+  if(tab==='stocklatest') renderStockLatest();
+  if(tab==='ml') renderMLPreview();
+  if(tab==='summary') renderSummaryTab();
+}
+
+/* ============================================================ STATE */
+let allRows = [];
+let portfolioRows = [];
+let summaryRows = [];
+let prevLatestActions = {};
+let portMap = {}; // global portfolio map: symbol → cost_price
+let filterNow = 'ALL';
+let symFilterNowTl = 'ALL';
+const SESSION_ORDER = {PREMARKET:0,OPEN:1,MIDDAY:2,CLOSE:3};
+
+// ML state — 6D weights (RSI/Heat/pct50/EMAMom/Score/GroupRS) รวม = 1.0
+let mlWeights = {RSI:0.26,Heat:0.22,pct50:0.18,EMAMom:0.18,Score:0.09,GroupRS:0.07};
+let mlThresholds = {buy:35,hold:65,partial:80,sell:80};
+let mlCorrelations = {};
+let mlAccuracy = {};
+let mlCM = {}; // Confusion Matrix: Precision / Recall / F1 per action
+let mlGroupRegime = {};
+let mlTrained = false;
+let mlVersion = 0;
+
+/* ============================================================ AUTO TRAIN (silent) */
+async function autoTrain() {
+  // รัน ML train เงียบๆ ไม่ต้องกด ไม่ขัด UI
+  try {
+    const latest = getLatest();
+    if(latest.length === 0) return;
+    const sumRows = parseSummaryRows();
+    mlGroupRegime = computeGroupRegime();
+
+    // Step 1
+    const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
+    const Y       = latest.map(r=>r.pct_ema50/maxPct);
+    const rsiArr  = latest.map(r=>Math.max(0,(r.rsi-30)/70));
+    const heatArr = latest.map(r=>(r.heat_n-1)/2);
+    const scrArr  = latest.map(r=>r.score>4?(r.score-4)/4:0);
+    const momArr  = latest.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
+    const pctArr  = latest.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
+    // GroupRS (6th dimension): rs ของกลุ่มที่หุ้นนั้นอยู่ clamp ±10 → 0-1
+    const grsArr  = latest.map(r=>{
+      const rs = mlGroupRegime[r.group]?.rs ?? 0;
+      return (Math.max(-10,Math.min(10,rs))+10)/20;
+    });
+
+    let corrs = {
+      RSI:    pearson(rsiArr,  Y),
+      Heat:   pearson(heatArr, Y),
+      pct50:  pearson(pctArr,  Y),
+      EMAMom: pearson(momArr,  Y),
+      Score:  pearson(scrArr,  Y),
+      GroupRS:pearson(grsArr,  Y),
+    };
+
+    // Step 2: outcome-weighted จาก summary จริง
+    if(sumRows.length >= 3) {
+      // zone-aware discrimination (ใช้ health+momentum zone ถ้ามี)
+      const closedRows2   = sumRows.filter(r=>r.outcome!=='OPEN'&&r.outcome!=='PENDING');
+      const bestEntryRows = closedRows2.filter(r=>r.zone==='BEST_ENTRY'||(r.zone==='UNKNOWN'&&r.outcome==='WIN'));
+      const dangerRows    = closedRows2.filter(r=>r.zone==='DANGER'    ||(r.zone==='UNKNOWN'&&r.outcome==='LOSS'));
+      const latestMap = {};
+      latest.forEach(r=>{ latestMap[r.symbol]=r; });
+      const bv = rows => rows.map(r=>latestMap[r.symbol]).filter(Boolean).map(r=>({
+        rsi:  Math.max(0,(r.rsi-30)/70),
+        heat: (r.heat_n-1)/2,
+        pct:  r.ema50>0?Math.min(Math.max(0,(r.ema20/r.ema50-1)*5),1):0,
+        mom:  r.ema50>0?Math.min(Math.max(0,((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1)),1):0,
+        scr:  r.score>4?(r.score-4)/4:0,
+        grs:  (Math.max(-10,Math.min(10,mlGroupRegime[r.group]?.rs??0))+10)/20,
+      }));
+      const wv = bv(bestEntryRows), lv = bv(dangerRows);
+      if(wv.length>=2 && lv.length>=2) {
+        const mean=(arr,k)=>arr.reduce((s,v)=>s+v[k],0)/arr.length;
+        const disc = {
+          RSI:    mean(wv,'rsi') -mean(lv,'rsi'),
+          Heat:   mean(wv,'heat')-mean(lv,'heat'),
+          pct50:  mean(wv,'pct') -mean(lv,'pct'),
+          EMAMom: mean(wv,'mom') -mean(lv,'mom'),
+          Score:  mean(wv,'scr') -mean(lv,'scr'),
+          GroupRS:mean(wv,'grs') -mean(lv,'grs'),
+        };
+        const labeled = bestEntryRows.length + dangerRows.length;
+        const blend = Math.min(0.5, labeled/40);
+        Object.keys(corrs).forEach(k=>{ corrs[k]=corrs[k]*(1-blend)+disc[k]*blend; });
+      }
+    }
+    mlCorrelations = corrs;
+
+    // Step 3: weights
+    const absC = {};
+    Object.entries(corrs).forEach(([k,v])=>{ absC[k]=Math.max(0.01,Math.abs(v)); });
+    const tot = Object.values(absC).reduce((s,v)=>s+v,0);
+    const newW = {};
+    Object.entries(absC).forEach(([k,v])=>{ newW[k]=+(v/tot).toFixed(4); });
+    const wSum = Object.values(newW).reduce((s,v)=>s+v,0);
+    Object.keys(newW).forEach(k=>{ newW[k]=+(newW[k]/wSum).toFixed(4); });
+    mlWeights = newW;
+
+    // Step 4: thresholds
+    const accMap = computeAccuracy(sumRows);
+    mlAccuracy = accMap;
+    const buyAcc = accMap['BUY']?.acc||0.5,  buyN = accMap['BUY']?.total||0;
+    const tpAcc  = (accMap['TAKE PROFIT']?.acc||accMap['TP']?.acc)||0.5;
+    const tpN    = accMap['TAKE PROFIT']?.total||0;
+    const buyConf= Math.min(1,buyN/20), tpConf=Math.min(1,tpN/20);
+    const effBuy = 0.5+(buyAcc-0.5)*buyConf, effTp=0.5+(tpAcc-0.5)*tpConf;
+    const tBuy   = Math.max(18,Math.min(48,Math.round(35-(effBuy-0.5)*24)));
+    const tPart  = Math.max(52,Math.min(78,Math.round(65-(effTp-0.5)*24)));
+    const tSell  = Math.max(68,Math.min(92,Math.round(80-(effTp-0.5)*14)));
+    mlThresholds = {buy:tBuy, hold:tPart, partial:tPart, sell:tSell};
+    mlTrained = true;
+    mlVersion++;
+
+    // อัพเดต status bar เงียบๆ
+    const note = document.getElementById('mlThreshNote');
+    if(note) note.textContent = ` · ML v${mlVersion} ✓ (BUY<${tBuy} / SELL>${tSell})`;
+
+    // Re-render signal matrix ให้คะแนนใหม่ทันที
+    renderAll();
+
+    console.log(`[AutoTrain v${mlVersion}] weights:`, mlWeights, '| thresholds:', mlThresholds,
+      '| summary rows:', sumRows.length);
+  } catch(e) {
+    console.warn('[AutoTrain] failed:', e);
+  }
+}
+
+async function loadFromSheet() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  document.getElementById('sheetStatus').className = 'status-val loading';
+  let dots = 0;
+  const t = setInterval(() => {
+    dots=(dots+1)%4;
+    document.getElementById('sheetStatus').textContent = `กำลังโหลด${'.'.repeat(dots+1)}`;
+  }, 800);
+  try {
+    // === โหลดจาก Supabase แทน GAS ===
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0,10);
+
+    const [resSignals, resPort, resSum] = await Promise.all([
+      // stock_signals 30 วันล่าสุด join symbols
+      (await sb.from('stock_signals'))
+        .select('signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))')
+        ._filters.push(`signal_date=gte.${cutoffStr}`) && null ||
+      fetch(`${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc`, { headers: sb._hdr() }),
+
+      // portfolio ที่ active
+      fetch(`${SUPABASE_URL}/rest/v1/portfolio?select=avg_cost,is_active,symbols(symbol)&is_active=eq.true`, { headers: sb._hdr() }),
+
+      // trade_journal 90 วันล่าสุด
+      fetch(`${SUPABASE_URL}/rest/v1/trade_journal?select=trade_date,session,action_recommended,actual_action,score,price,cost_price,pnl_pct,category,composite_score,health_score,momentum_score,symbols(symbol,groups(name))&trade_date=gte.${new Date(Date.now()-90*864e5).toISOString().slice(0,10)}&order=trade_date.desc`, { headers: sb._hdr() }),
+    ]);
+
+    // parse stock_signals → allRows format
+    const signalsRaw = await resSignals.json();
+    const newRows = (Array.isArray(signalsRaw) ? signalsRaw : []).map(r => {
+      const sym   = r.symbols?.symbol || '';
+      const grpName = r.symbols?.groups?.name || '';
+      const emoji   = r.symbols?.groups?.emoji || '';
+      return normalizeRowObj({
+        date:       r.signal_date,
+        time:       '00:00:00',
+        session:    r.session,
+        symbol:     sym,
+        group:      grpName,
+        signal:     r.signal||'',
+        trend:      r.trend ? (r.trend==='UP'?'🟢 UP':r.trend==='DOWN'?'🔴 DOWN':'🟡 SIDE') : '',
+        action:     r.action||'',
+        rsi:        r.rsi,
+        heat:       r.heat||'COOL',
+        confidence: r.confidence||'C',
+        smartRank:  r.smart_rank||0,
+        volume:     r.volume_level||'NORMAL',
+        risk:       r.risk||'MEDIUM',
+        score:      r.score||0,
+        price:      r.price,
+        ema20:      r.ema20,
+        ema50:      r.ema50,
+        run_seq:    r.run_seq||0,
+        composite_score: r.composite_score,
+        health_score:    r.health_score,
+        momentum_score:  r.momentum_score,
+      });
+    }).filter(r => r.symbol && r.price > 0);
+
+    if(newRows.length === 0) throw new Error('ไม่มีข้อมูล stock_signals ใน Supabase');
+
+    // parse portfolio → portfolioRows format [[symbol,cost_price],...]
+    const portRaw = await resPort.json();
+    const newPortRows = [['symbol','cost_price'],
+      ...(Array.isArray(portRaw)?portRaw:[])
+        .filter(r=>r.symbols?.symbol)
+        .map(r=>[r.symbols.symbol, r.avg_cost])
+    ];
+
+    // parse trade_journal → summaryRows format [[header,...],[row,...],...]
+    const sumRaw = await resSum.json();
+    const sumHeader = ['date','time','session','symbol','group','action_recommended','actual_action','score','price','cost_price','pnl_pct','category','notes','composite_score','health_score','momentum_score'];
+    const newSumRows = [sumHeader,
+      ...(Array.isArray(sumRaw)?sumRaw:[])
+        .filter(r=>r.symbols?.symbol)
+        .map(r=>[
+          r.trade_date, '00:00:00', r.session||'',
+          r.symbols.symbol,
+          r.symbols?.groups?.name||'',
+          r.action_recommended||'', r.actual_action||'',
+          r.score||0, r.price||0, r.cost_price||'', r.pnl_pct||'',
+          r.category||'', '',
+          r.composite_score||'', r.health_score||'', r.momentum_score||'',
+        ])
+    ];
+
+    // อัพเดต state
+    prevLatestActions = {};
+    const _latest = getLatest();
+    const _maxPct = Math.max(..._latest.map(r=>r.pct_ema50),1);
+    _latest.forEach(r => {
+      r._comp = composite(r, _maxPct);
+      prevLatestActions[r.symbol] = aiLabel(r);
+    });
+    allRows       = newRows;
+    portfolioRows = newPortRows;
+    summaryRows   = newSumRows;
+
+    clearInterval(t);
+    document.getElementById('sheetStatus').className  = 'status-val ok';
+    document.getElementById('sheetStatus').textContent = `Supabase · stock_signals ✓`;
+    document.getElementById('recordCount').textContent = `${allRows.length} records`;
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString('th-TH');
+    document.getElementById('lastUpdated').style.color = 'var(--acc)';
+    renderAll();
+    updateAlertSummary();
+    autoTrain();
+  } catch(err) {
+    clearInterval(t);
+    document.getElementById('sheetStatus').className  = 'status-val err';
+    document.getElementById('sheetStatus').textContent = `โหลดไม่ได้ · offline (TEST DATA)`;
+    if(allRows.length === 0) {
+      allRows       = parseCSV(FALLBACK_CSV);
+      summaryRows   = FALLBACK_SUMMARY;
+      portfolioRows = [
+        ['symbol','cost_price'],
+        ['NVDA','1020.00'],
+        ['OKLO','62.00'],
+        ['TSM','380.00'],
+        ['PLTR','21.00'],
+      ];
+      document.getElementById('recordCount').textContent = `${allRows.length} records (test data)`;
+      renderAll();
+      autoTrain();
+    }
+  } finally {
+    clearInterval(t);
+    btn.disabled = false;
+  }
+}
+
+/* ============================================================ HELPERS */
+function csvToArray(text) {
+  return text.trim().split('\n').map(l => l.split(',').map(v => v.trim()));
+}
+function arrayToCSV(arr) {
+  return arr.map(r => r.join(',')).join('\n');
+}
+
+// แปลง string ตัวเลขให้เป็น float — handle ทั้ง "29.43" และ "29,43" (locale ที่ใช้ , เป็น decimal)
+function safeFloat(v) {
+  if(v===null||v===undefined||v==='') return 0;
+  const s = v.toString().trim().replace(/,(?=\d{1,2}($|[^\d]))/, '.');
+  return parseFloat(s) || 0;
+}
+
+// normalize row object (ใช้ร่วมกันทั้ง parseCSV และ parseHistoryArray)
+function normalizeRowObj(obj) {
+  obj.symbol  = (obj.symbol||'').toUpperCase().trim();
+  obj.rsi     = safeFloat(obj.rsi);
+  obj.score   = parseInt(obj.score)||0;
+  obj.price   = safeFloat(obj.price);
+  obj.ema20   = safeFloat(obj.ema20);
+  obj.ema50   = safeFloat(obj.ema50);
+  obj.pct_ema50 = obj.ema50 ? +((obj.price-obj.ema50)/obj.ema50*100).toFixed(2) : 0;
+  obj.heat_n  = {COOL:1,HOT:2,EXTREME:3}[obj.heat]||1;
+  obj.conf_n  = {A:3,B:2,C:1}[obj.confidence]||1;
+  obj.group   = (obj.group||'').replace(/[^\x20-\x7E\u0E00-\u0E7F]/g,'').trim();
+  obj.action  = (obj.action||'').toUpperCase().trim()
+    .replace('BUY / ADD','BUY').replace('BUY/ADD','BUY')
+    .replace('TAKE PROFIT','TAKE PROFIT').replace('TP','TAKE PROFIT')
+    .replace('WATCH / HOLD','WATCH').replace('WATCH/HOLD','WATCH');
+  // run_seq: ลำดับ physical row จาก sheet (ROW()-1) ใช้แทน date+time sort
+  // ถ้า sheet เก่าไม่มี column นี้จะได้ 0 → fallback dtKey ใน getLatest()
+  obj.run_seq = parseInt(obj.run_seq) || 0;
+  return obj;
+}
+
+/* ============================================================ CSV PARSER (ใช้สำหรับ FALLBACK_CSV เท่านั้น) */
+function parseCSV(text) {
+  const lines = text.trim().split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length<2) return [];
+  const hdr = lines[0].split(',').map(h=>h.trim());
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v=>v.trim());
+    const obj = {};
+    hdr.forEach((h,i) => obj[h]=vals[i]||'');
+    return normalizeRowObj(obj);
+  }).filter(r=>r.symbol&&r.price>0);
+}
+
+/* ============================================================ ARRAY PARSER (ใช้กับข้อมูลจาก GAS โดยตรง)
+   bypass pipeline arrayToCSV→parseCSV ที่ทำให้คอลัมน์เลื่อนเมื่อ getDisplayValues()
+   ส่งตัวเลขแบบ locale (เช่น "29,43") กลับมา — map header→value จาก 2D array โดยตรง
+   filter 30 วันทำที่นี่แทน GAS เพื่อกันปัญหา date format/locale ฝั่ง GAS */
+function parseHistoryArray(arr, days) {
+  if(!arr||arr.length<2) return [];
+  const hdr = arr[0].map(h=>(h||'').toString().trim());
+  const cutoffDays = days || 30;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - cutoffDays);
+  cutoff.setHours(0,0,0,0);
+  const cutoffKey = cutoff.getFullYear()+'-'
+    +String(cutoff.getMonth()+1).padStart(2,'0')+'-'
+    +String(cutoff.getDate()).padStart(2,'0')+' 00:00:00';
+
+  return arr.slice(1).map(row => {
+    const obj = {};
+    hdr.forEach((h,i) => {
+      const v = (row[i]!==undefined&&row[i]!==null) ? row[i].toString() : '';
+      obj[h] = v.replace(/[\r\n]+/g,'').trim();
+    });
+    return normalizeRowObj(obj);
+  }).filter(r => {
+    if(!r.symbol||r.price<=0) return false;
+    const dk = dtKey(r);
+    // ถ้า date field ว่างหรือ parse ไม่ออก ให้ผ่านไว้ก่อน (กัน row ใหม่ที่ date format แปลก)
+    if(!dk||dk.trim()===' 00:00:00') return true;
+    return dk >= cutoffKey;
+  });
+}
+
+/* ============================================================ LATEST */
+// normalize date+time เป็น "YYYY-MM-DD HH:MM:SS" เพื่อเทียบ string ได้ถูกต้อง
+// แม้ sheet จะส่งมาในรูปแบบ d/m/yyyy, yyyy-m-d, ไม่มี leading zero, หรือไม่มี time
+function dtKey(r) {
+  let d = (r.date||'').trim();
+  let t = (r.time||'00:00:00').trim() || '00:00:00';
+
+  const parts = d.split(/[-\/]/).map(p=>p.trim());
+  if(parts.length===3) {
+    let y, m, day;
+    if(parts[0].length===4) { // YYYY-M-D หรือ YYYY-MM-DD
+      y=parts[0]; m=parts[1]; day=parts[2];
+    } else { // D-M-YYYY หรือ M-D-YYYY -> ใช้ parts[2] เป็นปี (D/M สลับกันไม่ทำให้ key ผิดมาก ตราบใดที่ format คงที่ทั้ง sheet)
+      y=parts[2]; m=parts[1]; day=parts[0];
+    }
+    d = y+'-'+String(m).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+  }
+
+  const tp = t.split(':').map(p=>p.trim());
+  while(tp.length<3) tp.push('00');
+  t = tp.map(p=>p.padStart(2,'0')).join(':');
+
+  return d+' '+t;
+}
+
+function getLatest() {
+  const map = {};
+  allRows.forEach(r => {
+    const k = r.symbol;
+    if (!map[k]) { map[k] = r; return; }
+    const cur = map[k];
+    // ถ้าทั้งคู่มี run_seq → ใช้ run_seq เปรียบเทียบ (ใหญ่กว่า = append ทีหลัง = ใหม่กว่าเสมอ)
+    // ถ้าไม่มี run_seq (sheet เก่า) → fallback dtKey เหมือนเดิม
+    const rSeq   = r.run_seq   || 0;
+    const curSeq = cur.run_seq || 0;
+    if (rSeq > 0 || curSeq > 0) {
+      if (rSeq > curSeq) map[k] = r;
+    } else {
+      const rDT   = dtKey(r);
+      const curDT = dtKey(cur);
+      if (rDT > curDT) map[k] = r;
+    }
+  });
+  return Object.values(map);
+}
+
+/* ============================================================ GROUP REGIME
+   เทียบความแรงของแต่ละกลุ่ม (group) กับ "ตลาด" = ค่าเฉลี่ยของหุ้นทั้งหมดใน
+   stock_history ณ snapshot เดียวกัน (date+time+session)
+   - rs    = groupAvg(pct_ema50) - marketAvg(pct_ema50) ของ snapshot ล่าสุด
+   - slope = ทิศทางของ rs จาก 5 snapshot ล่าสุด (UP/DOWN/FLAT)
+   ไม่ต้องดึงข้อมูลเพิ่ม ใช้ stock_history ที่มีอยู่แล้วทั้งหมด
+*/
+function computeGroupRegime() {
+  if(!allRows.length) return {};
+
+  // 1) จัดแถวเป็น snapshot ตาม date+time+session
+  const snapshots = {};
+  allRows.forEach(r => {
+    const key = `${r.date}|${r.time}|${r.session}`;
+    (snapshots[key] = snapshots[key] || []).push(r);
+  });
+
+  // 2) เรียง snapshot ตามเวลา (date+time เป็น string sortable) แล้วคำนวณ
+  //    marketAvg ของทั้ง snapshot + groupAvg ต่อกลุ่ม → rs ของแต่ละกลุ่ม ณ จุดนั้น
+  const snapKeys = Object.keys(snapshots).sort();
+  const groupSeries = {}; // { groupName: [rs, rs, ...] เรียงตามเวลา }
+  snapKeys.forEach(key => {
+    const rows = snapshots[key];
+    if(!rows.length) return;
+    const marketAvg = rows.reduce((s,r)=>s+(r.pct_ema50||0),0) / rows.length;
+
+    const byGroup = {};
+    rows.forEach(r => {
+      const g = r.group || '';
+      if(!g) return;
+      (byGroup[g] = byGroup[g] || []).push(r.pct_ema50||0);
+    });
+
+    Object.entries(byGroup).forEach(([g, vals]) => {
+      const groupAvg = vals.reduce((s,v)=>s+v,0) / vals.length;
+      (groupSeries[g] = groupSeries[g] || []).push(groupAvg - marketAvg);
+    });
+  });
+
+  // 3) ต่อกลุ่ม: rs ล่าสุด + slope จาก 5 จุดล่าสุด
+  const result = {};
+  Object.entries(groupSeries).forEach(([g, series]) => {
+    const pts = series.slice(-5);
+    const rs = pts[pts.length-1];
+    const slope = pts.length >= 2 ? (pts[pts.length-1] - pts[0]) / pts.length : 0;
+    let label = 'FLAT';
+    if(slope >= 1)       label = 'UP';
+    else if(slope <= -1) label = 'DOWN';
+    result[g] = { rs: +rs.toFixed(2), slope: +slope.toFixed(2), label, points: pts.length };
+  });
+  return result;
+}
+
+/* ============================================================ TREND SLOPE
+/* ============================================================ TREND SLOPE
+   ดู composite score ย้อนหลัง N จุดของ symbol นั้น
+   ใช้ lightweight score แทน full composite เพื่อประสิทธิภาพ
+*/
+function trendSlope(symbol, maxPct50) {
+  const rows = allRows
+    .filter(r => r.symbol === symbol)
+    .sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+
+  if(rows.length < 3) return { slope: 0, label: '—', cls:'slope-flat', points: [] };
+
+  // lightweight score: rsi + ema gap + score (ไม่เรียก healthScore ซ้ำ)
+  const quickScore = r => {
+    const rsiN = Math.max(0,(r.rsi-30)/70);
+    const pctN = maxPct50>0 ? Math.min(Math.max(-1,r.pct_ema50/maxPct50),1) : 0;
+    const scrN = r.score>4 ? (r.score-4)/4 : 0;
+    return (rsiN*0.4 + pctN*0.4 + scrN*0.2) * 100;
+  };
+
+  const pts = rows.slice(-5).map(r => quickScore(r));
+  const slope = (pts[pts.length-1] - pts[0]) / pts.length;
+
+  let label, cls;
+  if(slope <= -8)       { label = '📉 อ่อนแรงเร็ว'; cls = 'slope-fast-down'; }
+  else if(slope <= -3)  { label = '⚠️ อ่อนแรง';     cls = 'slope-down'; }
+  else if(slope <= -1)  { label = '↘ ค่อยๆ ลง';    cls = 'slope-slow-down'; }
+  else if(slope >= 5)   { label = '🚀 แข็งขึ้น';    cls = 'slope-up'; }
+  else if(slope >= 2)   { label = '↗ ค่อยๆ ขึ้น';  cls = 'slope-slow-up'; }
+  else                  { label = '➡ ทรงตัว';       cls = 'slope-flat'; }
+
+  return { slope: +slope.toFixed(1), label, cls, points: pts };
+}
+
+function composite(r, maxPct50) {
+  const w = mlWeights;
+  const rsiN=Math.max(0,(r.rsi-30)/70);
+  const heatN=(r.heat_n-1)/2;
+  // ให้ติดลบได้เมื่อหลุด EMA50 (เปลี่ยน Max(0,...) → Max(-1,...))
+  const pctN=maxPct50>0?Math.min(Math.max(-1,r.pct_ema50/maxPct50),1):0;
+  const momN=r.ema50>0?Math.min(Math.max(-1,((r.ema20-r.ema50)/r.ema50*100)/(maxPct50||1)),1):0;
+  const scrN=r.score>4?(r.score-4)/4:0;
+  // raw composite
+  const raw = rsiN*w.RSI+heatN*w.Heat+pctN*w.pct50+momN*w.EMAMom+scrN*w.Score;
+  // blend health score เข้ามา 15% เพื่อให้ EMA trend กดคะแนนได้จริง
+  const hs = healthScore(r);
+  const hsN = Math.min(Math.max(hs/100, -0.6), 1); // normalize -60..+100 → -0.6..1
+  const blended = raw*0.85 + hsN*0.15;
+  // แสดงค่าติดลบได้ถึง -30 เพื่อสะท้อนความอันตรายของหุ้นที่หลุด EMA
+  return +(Math.max(-30, blended)*100).toFixed(1);
+}
+
+/* ============================================================ HEALTH SCORE
+   ตอบคำถาม "ติดลบอยู่ — ซื้อเพิ่มหรือขายทิ้ง?"
+   EMA20 vs EMA50 = สำคัญที่สุด (trend direction)
+   range: -60 ถึง +100  |  ≥40 = ซื้อเพิ่มได้  |  <0 = อันตราย
+*/
+function healthScore(r, slope) {
+  // slope เสริม (optional) — ถ้าไม่ส่งมาใช้ 0 (backward compatible)
+  const sl = (slope !== undefined && slope !== null) ? slope : 0;
+  let h = 0;
+  // trend direction — สำคัญที่สุด
+  if(r.ema20>0 && r.ema50>0) h += r.ema20 > r.ema50 ? 35 : -35;
+  // RSI zone — ไม่ oversold/overbought เกิน
+  h += (r.rsi>=35 && r.rsi<=65) ? 25 : -25;
+  // slope จริงจาก trendSlope (แทน action BUY เพื่อลด circular dependency)
+  h += sl >= 2 ? 20 : sl <= -3 ? -20 : 0;
+  // confidence
+  h += r.confidence==='A' ? 20 : 0;
+  return h; // -60 to +100
+}
+
+/* ============================================================ MOMENTUM SCORE
+   ตอบคำถาม "กำไรแล้ว — ไปต่อหรือหมดแรง?"
+   range: -100 ถึง +100  |  >30 = ถือต่อ  |  <0 = ควรขาย
+*/
+function momentumScore(r) {
+  let m = 0;
+  // RSI ไม่ overbought
+  m += r.rsi < 75 ? 30 : -30;
+  // heat ไม่ EXTREME
+  m += r.heat !== 'EXTREME' ? 25 : -25;
+  // signal ไม่ใช่ TAKE PROFIT
+  m += r.action !== 'TAKE PROFIT' ? 25 : -25;
+  // RSI ไม่เกิน 70 (ยังมีแรงเหลือ)
+  m += r.rsi < 70 ? 20 : -20;
+  return m; // -100 to +100
+}
+
+/* ============================================================ PORTFOLIO ACTION
+   ใช้ทั้ง 3 scores + Trend ตัดสินใจ
+*/
+function portfolioAction(h) {
+  // 1. SL ถึงก่อนเลย
+  if(h.slHit) return { action:'🔴 STOPLOSS · ออกทันที', cls:'at-sell' };
+
+  const hs    = h._health;
+  const ms    = h._momentum;
+  const pnl   = h.pnl;
+  const slope = h._slope?.slope ?? 0;
+
+  // === Trend Override — อ่อนแรงเร็ว = อันตราย ไม่ว่า PnL จะเป็นอะไร ===
+  if(slope <= -8) return { action:'📉 อ่อนแรงเร็ว · ออกด่วน', cls:'at-sell' };
+
+  // 2. P&L ติดลบ — ดู Health + Trend
+  if(pnl !== null && pnl < 0) {
+    if(hs < 0 && slope <= -3) return { action:'🔴 Trend+Score ลง · ขายได้เลย', cls:'at-sell' };
+    if(hs < 0)  return { action:'⚠️ Trend กลับ · พิจารณาขาย', cls:'at-sell' };
+    if(hs >= 40 && slope >= 0) return { action:'✅ Dip · ซื้อเพิ่มได้', cls:'at-add' };
+    if(hs >= 40 && slope < 0)  return { action:'👁️ Dip แต่ Score ลง · รอดูก่อน', cls:'at-hold' };
+    return { action:'👁️ รอดูก่อน · Health กลาง', cls:'at-hold' };
+  }
+
+  // 3. P&L บวก — ดู Trend ก่อน Momentum
+  if(slope <= -3 && ms < 30) return { action:'⚠️ อ่อนแรง · พิจารณา TP', cls:'at-partial' };
+  if(slope <= -1 && pnl > 5) return { action:'💡 Score ค่อยๆ ลง · TP บางส่วน', cls:'at-partial' };
+  if(ms < 0)   return { action:'💰 หมดแรงแล้ว · Take Profit', cls:'at-partial' };
+  if(ms >= 30 && slope >= 0) return { action:'📈 Momentum ดี · ถือต่อ', cls:'at-hold' };
+  if(ms >= 30 && slope < 0)  return { action:'📈 Momentum ดี แต่ระวัง', cls:'at-hold' };
+
+  // 4. กลาง ๆ — ดู composite
+  if(h.comp >= mlThresholds.sell)    return { action:'ขายหมด · Upside หมด', cls:'at-sell' };
+  if(h.comp >= mlThresholds.partial) return { action:'ขายบางส่วน · Rotate', cls:'at-partial' };
+  if(h.comp < mlThresholds.buy && hs >= 40 && slope >= 0) return { action:'ซื้อเพิ่ม · Upside สูง', cls:'at-add' };
+  return { action:'ถือต่อ', cls:'at-hold' };
+}
+
+/* ============================================================ ML ALGORITHM */
+
+// ---- Pearson correlation helper ----
+function pearson(xs, ys) {
+  const n = xs.length;
+  if(n < 3) return 0;
+  const mx = xs.reduce((a,b)=>a+b,0)/n;
+  const my = ys.reduce((a,b)=>a+b,0)/n;
+  let num=0, dx2=0, dy2=0;
+  for(let i=0;i<n;i++){
+    const dx=xs[i]-mx, dy=ys[i]-my;
+    num+=dx*dy; dx2+=dx*dx; dy2+=dy*dy;
+  }
+  const denom=Math.sqrt(dx2*dy2);
+  return denom===0?0:+(num/denom).toFixed(4);
+}
+
+// ---- Parse summary rows ----
+function parseSummaryRows() {
+  if(!summaryRows || summaryRows.length < 2) return [];
+  const hdr = summaryRows[0].map(h=>(h||'').toLowerCase().trim().replace(/\s+/g,'_'));
+  return summaryRows.slice(1).map(row => {
+    const o = {};
+    hdr.forEach((h,i) => o[h] = (row[i]||'').toString().trim());
+    o.date    = o.date||'';
+    o.symbol  = (o.symbol||'').toUpperCase().trim();
+    o.session = o.session||'';
+    o.group   = o.group||'';
+    const rawAct = o.action || o.action_recommended || '';
+    o.action  = normalizeAction(rawAct);
+    o.actual_action = (o.actual_action||'').trim();  // อ่านจาก sheet ถ้ามี
+    // ถ้ามี actual_action จาก sheet → เซ็ต actualActionMap ด้วย
+    if(o.actual_action && o.actual_action !== '—') {
+      const k = actualKey(o);
+      if(!actualActionMap[k]) actualActionMap[k] = o.actual_action;
+    }
+    o.category = o.category||'';
+    o.price      = parseFloat(o.price)||0;
+    o.cost_price = parseFloat(o.cost_price)||0;
+    o.score      = parseFloat(o.score)||0;
+    // 3 scores จาก export ใหม่
+    o.composite_score  = parseFloat(o.composite_score)||null;
+    o.health_score     = parseFloat(o.health_score)||null;
+    o.momentum_score   = parseFloat(o.momentum_score)||null;
+    const pnl = parseFloat(o.pnl_pct);
+    o.pnl_pct = isNaN(pnl) ? null : pnl;
+    if(o.pnl_pct !== null) {
+      o.outcome = o.pnl_pct > 0 ? 'WIN' : o.pnl_pct < 0 ? 'LOSS' : 'HOLD';
+    } else {
+      o.outcome = (o.outcome||o.result||'').toUpperCase().trim() || 'PENDING';
+    }
+    // zone — ใช้ train ML (ใหม่)
+    if(o.health_score !== null && o.composite_score !== null) {
+      const isHealthy  = o.health_score >= 40;
+      const hasUpside  = o.composite_score < 50;
+      if(!isHealthy && hasUpside)  o.zone = 'DANGER';       // ติดลบ + trend แย่ → ขาย
+      else if(isHealthy && hasUpside) o.zone = 'BEST_ENTRY'; // ติดลบ + trend ดี → ซื้อเพิ่ม
+      else if(!isHealthy)           o.zone = 'EXIT';         // วิ่งแล้ว + trend แย่ → ออก
+      else                          o.zone = 'TAKE_PROFIT';  // วิ่งแล้ว + trend ดี → TP
+    } else {
+      o.zone = 'UNKNOWN';
+    }
+    o.note = o.notes||o.note||o.remark||'';
+    return o;
+  }).filter(r=>r.symbol);
+}
+
+// Map Thai category / action strings → EN key
+function normalizeAction(raw) {
+  const r = (raw||'').trim();
+  if(!r) return '';
+  const thaiMap = {
+    'ซื้อเพิ่ม':'BUY','ซื้อ':'BUY','buy':'BUY',
+    'ขายหมด':'TAKE PROFIT','ขาย':'TAKE PROFIT','take profit':'TAKE PROFIT','tp':'TAKE PROFIT',
+    'ขายบางส่วน':'PARTIAL SELL','partial':'PARTIAL SELL',
+    'ถือต่อ':'WATCH','ถือ':'WATCH','hold':'WATCH','watch':'WATCH',
+    'โอกาสใหม่':'BUY',
+  };
+  const lower = r.toLowerCase();
+  for(const [k,v] of Object.entries(thaiMap)){
+    if(lower.includes(k.toLowerCase())) return v;
+  }
+  return r.toUpperCase();
+}
+
+// ---- Step 1: Data Collection ----
+function mlStep1() {
+  const n = allRows.length;
+  const latest = getLatest();
+  const sumRows = parseSummaryRows();
+  mlGroupRegime = computeGroupRegime();
+  const grCount = Object.keys(mlGroupRegime).length;
+  document.getElementById('step1result').innerHTML =
+    `<span class="step-badge done">✓ DONE</span>
+     <div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:#8FCFBA">
+       ${n} history rows · ${latest.length} symbols<br>
+       ${sumRows.length} summary records<br>
+       ${grCount} groups (Group Regime 6D ✓)
+     </div>`;
+  document.getElementById('step1card').className='ml-step done-step';
+  return {n, latest, sumRows};
+}
+
+// ---- Step 2: Enhanced Pearson Correlation + Outcome-weighted ----
+function mlStep2(latest, sumRows) {
+  const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
+  const Y = latest.map(r=>r.pct_ema50/maxPct);
+  const rsiArr = latest.map(r=>Math.max(0,(r.rsi-30)/70));
+  const heatArr = latest.map(r=>(r.heat_n-1)/2);
+  const scrArr = latest.map(r=>r.score>4?(r.score-4)/4:0);
+  const momArr = latest.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
+  const pctArr = latest.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
+  // GroupRS (6th dimension): rs ของกลุ่มที่หุ้นนั้นอยู่ clamp ±10 → 0-1
+  const grsArr = latest.map(r=>{
+    const rs = mlGroupRegime[r.group]?.rs ?? 0;
+    return (Math.max(-10,Math.min(10,rs))+10)/20;
+  });
+
+  let corrs = {
+    RSI:    pearson(rsiArr,  Y),
+    Heat:   pearson(heatArr, Y),
+    pct50:  pearson(pctArr,  Y),
+    EMAMom: pearson(momArr,  Y),
+    Score:  pearson(scrArr,  Y),
+    GroupRS:pearson(grsArr,  Y),
+  };
+
+  // === TIME DECAY: trade ใหม่ได้ weight มากกว่า trade เก่า ===
+  // half-life = 30 วัน → trade อายุ 30 วัน มีน้ำหนัก 50% ของ trade ใหม่
+  const HALF_LIFE_DAYS = 30;
+  const today = new Date();
+  const decayWeight = r => {
+    if(!r.date) return 1;
+    const d = new Date(r.date);
+    const ageDays = (today - d) / 86400000;
+    return Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
+  };
+
+  // === SMART LEARNING v2: Zone-aware discrimination ===
+  if(sumRows.length >= 3) {
+    const latestMap = {};
+    latest.forEach(r=>{ latestMap[r.symbol]=r; });
+
+    const closedRows     = sumRows.filter(r=>r.outcome!=='OPEN'&&r.outcome!=='PENDING');
+    const bestEntryRows  = closedRows.filter(r=>r.zone==='BEST_ENTRY'  || (r.zone==='UNKNOWN'&&r.outcome==='WIN'));
+    const dangerRows     = closedRows.filter(r=>r.zone==='DANGER'      || (r.zone==='UNKNOWN'&&r.outcome==='LOSS'));
+
+    const buildFeatureVec = (rows) => {
+      return rows.map(r=>({ ...r, _dw: decayWeight(r) }))
+        .map(r=>({ src: r, lx: latestMap[r.symbol], dw: r._dw }))
+        .filter(x=>x.lx)
+        .map(x=>({
+          rsi:  Math.max(0,(x.lx.rsi-30)/70),
+          heat: (x.lx.heat_n-1)/2,
+          pct:  x.lx.ema50>0?Math.min(Math.max(0,(x.lx.ema20/x.lx.ema50-1)*5),1):0,
+          mom:  x.lx.ema50>0?Math.min(Math.max(0,((x.lx.ema20-x.lx.ema50)/x.lx.ema50*100)/(maxPct||1)),1):0,
+          scr:  x.lx.score>4?(x.lx.score-4)/4:0,
+          grs:  (Math.max(-10,Math.min(10,mlGroupRegime[x.lx.group]?.rs??0))+10)/20,
+          dw:   x.dw,
+        }));
+    };
+
+    const bestVecs = buildFeatureVec(bestEntryRows);
+    const dangerVecs = buildFeatureVec(dangerRows);
+
+    if(bestVecs.length>=2 && dangerVecs.length>=2) {
+      // weighted mean คำนึง time decay
+      const wmean = (arr,key) => {
+        const sw = arr.reduce((s,v)=>s+v.dw,0)||1;
+        return arr.reduce((s,v)=>s+v[key]*v.dw,0)/sw;
+      };
+      const disc = {
+        RSI:    wmean(bestVecs,'rsi')  - wmean(dangerVecs,'rsi'),
+        Heat:   wmean(bestVecs,'heat') - wmean(dangerVecs,'heat'),
+        pct50:  wmean(bestVecs,'pct')  - wmean(dangerVecs,'pct'),
+        EMAMom: wmean(bestVecs,'mom')  - wmean(dangerVecs,'mom'),
+        Score:  wmean(bestVecs,'scr')  - wmean(dangerVecs,'scr'),
+        GroupRS:wmean(bestVecs,'grs')  - wmean(dangerVecs,'grs'),
+      };
+      const labeledCount = bestEntryRows.length + dangerRows.length;
+      const blendFactor = Math.min(0.5, labeledCount / 40);
+      Object.keys(corrs).forEach(k=>{
+        corrs[k] = corrs[k]*(1-blendFactor) + disc[k]*blendFactor;
+      });
+    }
+  }
+
+  mlCorrelations = corrs;
+
+  // Render correlation table
+  const rows = Object.entries(corrs).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const maxAbs = Math.max(...rows.map(r=>Math.abs(r[1])),0.01);
+  document.getElementById('corrTable').innerHTML = `
+    <table class="corr-table">
+      <thead><tr><th>Indicator</th><th>Pearson r</th><th>Strength</th></tr></thead>
+      <tbody>${rows.map(([k,v])=>{
+        const abs=Math.abs(v);
+        const pct=(abs/maxAbs*100).toFixed(0);
+        const clr=abs>0.5?'var(--acc)':abs>0.3?'var(--warn)':'var(--muted)';
+        const sign=v>=0?'+':'';
+        return `<tr>
+          <td style="font-weight:700;color:var(--text)">${k}</td>
+          <td style="color:${clr};font-weight:700">${sign}${v.toFixed(4)}</td>
+          <td><div class="corr-bar" style="width:${pct}px;background:${clr}"></div> <span style="font-size:9px;color:${clr}">${(abs*100).toFixed(1)}%</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+
+  document.getElementById('step2result').innerHTML =
+    `<span class="step-badge done">✓ DONE</span>
+     <div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:#8FCFBA">
+       Top: ${rows[0][0]} (r=${rows[0][1].toFixed(3)})<br>
+       ${sumRows.length>0?`+${sumRows.length} trades feedback`:`Pearson only (ยังไม่มี summary)`}
+     </div>`;
+  document.getElementById('step2card').className='ml-step done-step';
+  return corrs;
+}
+
+// ---- Step 3: Weights + Thresholds (smarter) ----
+function mlStep3(corrs, sumRows) {
+  // Weight = |corr| / total (ensure all positive)
+  const absCorrs = {};
+  Object.entries(corrs).forEach(([k,v])=>{ absCorrs[k]=Math.max(0.01, Math.abs(v)); });
+  const total = Object.values(absCorrs).reduce((s,v)=>s+v,0);
+  const newW = {};
+  Object.entries(absCorrs).forEach(([k,v])=>{
+    newW[k] = total>0 ? +(v/total).toFixed(4) : mlWeights[k];
+  });
+  // Normalize to sum=1
+  const wSum = Object.values(newW).reduce((s,v)=>s+v,0);
+  Object.keys(newW).forEach(k=>{ newW[k]=+(newW[k]/wSum).toFixed(4); });
+  mlWeights = newW;
+
+  // Accuracy per action from summary
+  const accMap = computeAccuracy(sumRows);
+  mlAccuracy = accMap;
+
+  // Confusion Matrix: Precision / Recall / F1
+  mlCM = computePrecisionRecall(sumRows);
+
+  // ใช้ F1 ของ BUY แทน accuracy เพียงอย่างเดียว (balance Precision + Recall)
+  const buyF1  = mlCM['BUY']?.f1  || null;
+  const buyAcc = buyF1 !== null
+    ? buyF1  // มีข้อมูล FN พอ → ใช้ F1
+    : (accMap['BUY']?.acc || 0.5); // ไม่มี FN → fallback accuracy เดิม
+
+  // === SMARTER THRESHOLD: use accuracy + trade count confidence ===
+  let tBuy=35, tPartial=65, tSell=80;
+  const buyN    = accMap['BUY']?.total  || 0;
+  const tpAcc   = accMap['TAKE PROFIT']?.acc || accMap['TP']?.acc || 0.5;
+  const tpN     = accMap['TAKE PROFIT']?.total || 0;
+
+  // Confidence factor: more trades → trust accuracy more
+  const buyConf = Math.min(1, buyN / 20);
+  const tpConf  = Math.min(1, tpN  / 20);
+
+  // Blend default (0.5) with real accuracy using confidence
+  const effBuyAcc = 0.5 + (buyAcc - 0.5) * buyConf;
+  const effTpAcc  = 0.5 + (tpAcc  - 0.5) * tpConf;
+
+  tBuy    = Math.round(35 - (effBuyAcc - 0.5) * 24);
+  tPartial= Math.round(65 - (effTpAcc  - 0.5) * 24);
+  tSell   = Math.round(80 - (effTpAcc  - 0.5) * 14);
+  tBuy    = Math.max(18, Math.min(48, tBuy));
+  tPartial= Math.max(52, Math.min(78, tPartial));
+  tSell   = Math.max(68, Math.min(92, tSell));
+  mlThresholds = {buy:tBuy, hold:tPartial, partial:tPartial, sell:tSell};
+
+  renderWeightBars();
+  renderThresholds();
+  renderAccBars(accMap);
+
+  document.getElementById('step3result').innerHTML =
+    `<span class="step-badge done">✓ DONE</span>
+     <div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:#8FCFBA">
+       RSI:${(newW.RSI*100).toFixed(0)}% Heat:${(newW.Heat*100).toFixed(0)}%<br>
+       Thresh BUY&lt;${tBuy} SELL&gt;${tSell}<br>
+       <span style="color:var(--purple)">⏱ time decay 30d · actual action</span>
+     </div>`;
+  document.getElementById('step3card').className='ml-step done-step';
+
+  const note = document.getElementById('mlThreshNote');
+  if(note) note.textContent = ` · (ML: BUY<${tBuy} / SELL>${tSell})`;
+}
+
+// ---- Compute accuracy from summary ----
+// ใช้ action (EN normalized) + pnl_pct เป็น WIN/LOSS
+function computeAccuracy(sumRows) {
+  const map = {};
+  const HALF_LIFE_DAYS = 30;
+  const today = new Date();
+  const decayWeight = r => {
+    if(!r.date) return 1;
+    const d = new Date(r.date);
+    const ageDays = (today - d) / 86400000;
+    return Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
+  };
+  // normalizeAction สำหรับ actual (ภาษาไทย → EN)
+  const normActual = v => {
+    if(!v||v==='—') return null;
+    const m = {
+      'ซื้อ':'BUY','ซื้อเพิ่ม':'BUY',
+      'ขาย':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','ขายบางส่วน':'PARTIAL SELL',
+      'ถือ':'WATCH','ถือต่อ':'WATCH',
+      'ยังถืออยู่':'OPEN',
+      'ไม่สนใจ':'SKIP'
+    };
+    return m[v] || v.toUpperCase();
+  };
+  sumRows.forEach(r=>{
+    // ใช้ actual_action จาก row โดยตรง (อ่านจาก sheet แล้ว)
+    // fallback ไปใช้ actualActionMap จาก dropdown ถ้าไม่มีใน row
+    const key = actualKey(r);
+    const rawActual = r.actual_action || actualActionMap[key] || '';
+    const actual = normActual(rawActual);
+    const a = actual || r.action || normalizeAction(r.category);
+    if(!a || a==='SKIP') return; // ไม่สนใจ = ไม่นับ
+    if(a==='OPEN') return; // ยังถืออยู่ = ไม่นับใน accuracy
+    if(r.outcome==='PENDING' || r.outcome==='HOLD') return; // ยังไม่ปิด = ไม่นับ
+    // "ถือรายวัน" (WATCH) ที่ไม่มี pnl_pct = daily log ไม่ใช่ trade จริง → ไม่นับ
+    if(a==='WATCH' && r.pnl_pct === null) return;
+    if(!map[a]) map[a]={total:0,win:0,wTotal:0,wWin:0};
+    const dw = decayWeight(r);
+    map[a].total++;
+    map[a].wTotal += dw;
+    const out = r.outcome;
+    if(out==='WIN'){ map[a].win++; map[a].wWin += dw; }
+  });
+  // ใช้ weighted accuracy สำหรับ threshold (trade ใหม่สำคัญกว่า)
+  Object.values(map).forEach(m=>{
+    m.acc = m.wTotal>0 ? m.wWin/m.wTotal : 0;
+  });
+  return map;
+}
+
+// ---- Confusion Matrix: Precision / Recall / F1 per action ----
+// TP = system recommended action X → actual = X → WIN
+// FP = system recommended action X → actual = X → LOSS
+// FN = system did NOT recommend X → actual did X → WIN (missed opportunity)
+function computePrecisionRecall(sumRows) {
+  const normRec = v => {
+    if(!v) return null;
+    const m = {
+      'BUY / ADD':'BUY','BUY/ADD':'BUY','ซื้อเพิ่ม':'BUY','ซื้อ':'BUY',
+      'TAKE PROFIT':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','TP':'TAKE PROFIT',
+      'PARTIAL SELL':'PARTIAL SELL','ขายบางส่วน':'PARTIAL SELL',
+      'WATCH':'WATCH','HOLD':'WATCH','ถือ':'WATCH','ถือต่อ':'WATCH',
+      'STOPLOSS':'STOPLOSS','STOP LOSS':'STOPLOSS',
+    };
+    return m[v] || v.toUpperCase().trim();
+  };
+
+  const HALF_LIFE_DAYS = 30;
+  const today = new Date();
+  const decayWeight = r => {
+    if(!r.date) return 1;
+    const d = new Date(r.date);
+    if(isNaN(d)) return 1;
+    return Math.pow(0.5, (today - d) / 86400000 / HALF_LIFE_DAYS);
+  };
+
+  // cm[action] = { TP, FP, FN, wTP, wFP, wFN }
+  const cm = {};
+  const init = a => { if(!cm[a]) cm[a]={TP:0,FP:0,FN:0,wTP:0,wFP:0,wFN:0}; };
+
+  sumRows.forEach(r => {
+    const rawRec    = r.action_recommended || r.category || '';
+    const rawActual = r.actual_action || '';
+    const rec    = normRec(rawRec);
+    const actual = normRec(rawActual);
+
+    if(!actual || actual === 'SKIP' || actual === 'OPEN') return;
+    if(r.outcome === 'PENDING' || r.outcome === 'HOLD') return;
+    if(!r.pnl_pct && r.pnl_pct !== 0) return; // ไม่มี pnl = ยังไม่ปิด
+
+    const isWin = r.outcome === 'WIN';
+    const dw = decayWeight(r);
+
+    if(rec === actual) {
+      // ระบบแนะนำ = ทำจริง
+      init(actual);
+      if(isWin) { cm[actual].TP++; cm[actual].wTP += dw; }
+      else       { cm[actual].FP++; cm[actual].wFP += dw; }
+    } else {
+      // ระบบแนะนำ rec แต่ทำ actual → FN สำหรับ actual (missed)
+      if(actual && isWin) {
+        init(actual);
+        cm[actual].FN++; cm[actual].wFN += dw;
+      }
+    }
+  });
+
+  // คำนวณ weighted Precision, Recall, F1
+  Object.entries(cm).forEach(([a, d]) => {
+    const p = d.wTP + d.wFP > 0 ? d.wTP / (d.wTP + d.wFP) : 0;
+    const r = d.wTP + d.wFN > 0 ? d.wTP / (d.wTP + d.wFN) : 0;
+    const f = p + r > 0 ? 2 * p * r / (p + r) : 0;
+    cm[a].precision = +p.toFixed(3);
+    cm[a].recall    = +r.toFixed(3);
+    cm[a].f1        = +f.toFixed(3);
+  });
+  return cm;
+}
+
+// ---- Step 4: Adaptive feedback ----
+function mlStep4(sumRows) {
+  const accMap = mlAccuracy;
+  const totalTrades = sumRows.length;
+  const versions = totalTrades > 0 ? `v${mlVersion+1}.${totalTrades}` : `v${mlVersion+1}.0`;
+  mlVersion++;
+  document.getElementById('step4result').innerHTML =
+    `<span class="step-badge done">✓ DONE</span>
+     <div style="margin-top:6px;font-family:var(--mono);font-size:9px;color:#8FCFBA">
+       ${totalTrades} trades feed → model ${versions}<br>
+       ยิ่ง trade เพิ่ม → accuracy สูงขึ้น
+     </div>`;
+  document.getElementById('step4card').className='ml-step done-step';
+
+  // Update badge
+  const badge = document.getElementById('mlBadge');
+  badge.textContent = `ML ${versions}`;
+  badge.style.display='inline-block';
+
+  // Adaptive note
+  document.getElementById('adaptNote').innerHTML=`
+    <span style="color:var(--acc)">Feedback loop active</span> · Model ${versions}<br>
+    ${totalTrades} trades → accuracy ปรับแล้ว<br>
+    Train ใหม่ทุกครั้งที่เพิ่ม trade ใน summary
+  `;
+}
+
+// ---- Closed trades preview ----
+function getClosedTrades() {
+  const sumRows = parseSummaryRows();
+  const closedActions = ['ขายหมด','ขายบางส่วน','TAKE PROFIT','PARTIAL SELL'];
+  return sumRows.filter(r => {
+    const key = actualKey(r);
+    const act = r.actual_action || actualActionMap[key] || '';
+    return closedActions.some(c => act.toLowerCase() === c.toLowerCase());
+  }).map(r => {
+    const key = actualKey(r);
+    const act = r.actual_action || actualActionMap[key] || '';
+    return {
+      symbol:  r.symbol,
+      buyDate: r.date,
+      sellAct: act,
+      pnl:     r.pnl_pct,
+      outcome: r.outcome
+    };
+  });
+}
+
+function showTrainPreview() {
+  const trades = getClosedTrades();
+  const existing = document.getElementById('trainPreviewPanel');
+  if(existing) existing.remove();
+
+  const rows = trades.length === 0
+    ? `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">ยังไม่มี trade ที่ปิดแล้ว — กรอก "ขายหมด" ใน Summary ก่อนครับ</td></tr>`
+    : trades.map(t => {
+        const pnlClr = t.pnl > 0 ? 'var(--acc)' : t.pnl < 0 ? 'var(--danger)' : 'var(--muted)';
+        const pnlTxt = t.pnl !== null ? (t.pnl > 0 ? `+${t.pnl}%` : `${t.pnl}%`) : '—';
+        const outTxt = t.outcome === 'WIN' ? '✅ WIN' : t.outcome === 'LOSS' ? '❌ LOSS' : '—';
+        return `<tr style="border-bottom:0.5px solid rgba(255,255,255,.06)">
+          <td style="font-family:var(--mono);font-weight:700;color:var(--acc2)">${t.symbol}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${t.buyDate}</td>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--text)">${t.sellAct}</td>
+          <td style="font-family:var(--mono);font-weight:700;color:${pnlClr}">${pnlTxt}</td>
+          <td style="font-size:11px">${outTxt}</td>
+        </tr>`;
+      }).join('');
+
+  const panel = document.createElement('div');
+  panel.id = 'trainPreviewPanel';
+  panel.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  panel.innerHTML = `
+    <div style="background:#0d0d1a;border:1px solid rgba(0,255,178,.25);border-radius:12px;padding:24px;min-width:480px;max-width:640px;max-height:80vh;overflow-y:auto;box-shadow:0 0 40px rgba(0,255,178,.1)">
+      <div style="font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--acc);margin-bottom:4px">TRAIN ML — ตรวจสอบข้อมูลก่อน</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px">รายการที่ปิดแล้ว จะใช้ Train threshold จริง (${trades.length} รายการ)</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:20px">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.12)">
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">หุ้น</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">วันที่บันทึก</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">action</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">PnL</th>
+            <th style="text-align:left;padding:6px 8px;color:var(--muted);font-weight:500">ผล</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('trainPreviewPanel').remove()"
+          style="font-family:var(--mono);font-size:10px;padding:8px 20px;border:1px solid rgba(255,255,255,.2);background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;letter-spacing:1px">
+          ยกเลิก
+        </button>
+        <button onclick="document.getElementById('trainPreviewPanel').remove();_doRunMLTrain()"
+          style="font-family:var(--mono);font-size:10px;padding:8px 20px;border:1px solid rgba(0,255,178,.4);background:rgba(0,255,178,.1);color:var(--acc);border-radius:6px;cursor:pointer;letter-spacing:1px"
+          ${trades.length === 0 ? 'disabled style="opacity:.4;cursor:not-allowed"' : ''}>
+          ⚡ ยืนยัน Train
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(panel);
+}
+
+// ---- Main Train ----
+async function runMLTrain() {
+  showTrainPreview();
+}
+
+async function _doRunMLTrain() {
+  const btn = document.getElementById('trainBtn');
+  btn.disabled = true;
+  document.getElementById('mlStatusTxt').textContent = 'กำลัง train...';
+
+  // Reset steps
+  ['step1card','step2card','step3card','step4card'].forEach(id=>{
+    document.getElementById(id).className='ml-step active-step';
+  });
+  ['step1result','step2result','step3result','step4result'].forEach(id=>{
+    document.getElementById(id).innerHTML='<span class="step-badge running">RUNNING...</span>';
+  });
+
+  await sleep(120);
+  // Step 1
+  const {n, latest, sumRows} = mlStep1();
+  await sleep(180);
+  // Step 2 — now passes sumRows for outcome-based learning
+  const corrs = mlStep2(latest, sumRows);
+  await sleep(180);
+  // Step 3
+  mlStep3(corrs, sumRows);
+  await sleep(120);
+  // Step 4
+  mlStep4(sumRows);
+
+  mlTrained = true;
+  document.getElementById('mlStatusTxt').innerHTML=`<span style="color:var(--acc)">✓ Train สำเร็จ</span> · weights + thresholds อัพเดตแล้ว`;
+  document.getElementById('exportBtn').disabled = false;
+
+  // Re-render signal matrix with new weights
+  renderAll();
+
+  // Show config preview
+  buildMLConfigJSON();
+  document.getElementById('mlConfigPreview').style.display='block';
+
+  btn.disabled = false;
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// ---- Render weight bars (clickable) ----
+function renderWeightBars() {
+  const entries = Object.entries(mlWeights);
+  const colors = {RSI:'var(--danger)',Heat:'var(--warn)',pct50:'var(--acc2)',EMAMom:'var(--purple)',Score:'var(--teal)'};
+  document.getElementById('weightBars').innerHTML = entries.map(([k,v])=>{
+    const pct=(v*100).toFixed(1);
+    const corr=mlCorrelations[k]||0;
+    const corrSign=corr>=0?'+':'';
+    return `<div class="w-bar-row">
+      <div class="w-lbl">${k}</div>
+      <div class="w-track" onclick="adjustWeight('${k}',event)" title="คลิกเพื่อปรับ weight">
+        <div class="w-fill" id="wfill_${k}" style="width:${pct}%;background:${colors[k]||'var(--acc)'}"></div>
+      </div>
+      <div class="w-val" style="color:${colors[k]||'var(--acc)'}">${pct}%</div>
+      <div class="w-corr">r=${corrSign}${corr.toFixed(3)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('weightNote').textContent=
+    `Total: ${(Object.values(mlWeights).reduce((s,v)=>s+v,0)*100).toFixed(1)}% · คลิก bar เพื่อปรับ manual`;
+}
+
+function adjustWeight(key, e) {
+  const track = e.currentTarget;
+  const rect = track.getBoundingClientRect();
+  const pct = Math.max(0.05, Math.min(0.6, (e.clientX-rect.left)/rect.width));
+  mlWeights[key] = +pct.toFixed(4);
+  // Re-normalize
+  const total = Object.values(mlWeights).reduce((s,v)=>s+v,0);
+  Object.keys(mlWeights).forEach(k=>{ mlWeights[k]=+(mlWeights[k]/total).toFixed(4); });
+  renderWeightBars();
+  renderAll();
+  buildMLConfigJSON();
+}
+
+// ---- Render thresholds ----
+function renderThresholds() {
+  document.getElementById('tBuy').textContent    = mlThresholds.buy;
+  document.getElementById('tHold').textContent   = `${mlThresholds.buy}–${mlThresholds.partial}`;
+  document.getElementById('tPartial').textContent= mlThresholds.partial;
+  document.getElementById('tSell').textContent   = mlThresholds.sell;
+  document.getElementById('threshNote').innerHTML=`
+    ซื้อเพิ่ม: Score &lt; <b style="color:var(--acc)">${mlThresholds.buy}</b> · 
+    ถือต่อ: ${mlThresholds.buy}–${mlThresholds.partial} · 
+    ขายบางส่วน: ${mlThresholds.partial}–${mlThresholds.sell} · 
+    ขายหมด: &gt; <b style="color:var(--danger)">${mlThresholds.sell}</b>
+  `;
+}
+
+// ---- Render accuracy bars ----
+function renderAccBars(accMap) {
+  const el = document.getElementById('accBars');
+  const el2 = document.getElementById('summaryAccBars');
+  const clrs = {
+    'BUY':'var(--acc)',
+    'TAKE PROFIT':'var(--tp)',
+    'PARTIAL SELL':'var(--warn)',
+    'WATCH':'var(--acc2)'
+  };
+  // แสดงตาม key ที่มีใน accMap จริงๆ ไม่ hardcode
+  const html = Object.entries(accMap).map(([a, d])=>{
+    if(!d || d.total === 0) return '';
+    const pct=(d.acc*100).toFixed(0);
+    const clr=clrs[a]||'var(--muted)';
+    // Confusion Matrix metrics (ถ้ามี)
+    const cm = mlCM[a];
+    const cmHtml = cm ? (() => {
+      const prec = (cm.precision*100).toFixed(0);
+      const rec  = (cm.recall*100).toFixed(0);
+      const f1   = (cm.f1*100).toFixed(0);
+      const f1Clr = cm.f1 >= 0.5 ? 'var(--acc)' : cm.f1 >= 0.3 ? 'var(--warn)' : 'var(--danger)';
+      return `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:3px;display:flex;gap:10px">
+        <span>P:<span style="color:${clr}">${prec}%</span></span>
+        <span>R:<span style="color:${clr}">${rec}%</span></span>
+        <span>F1:<span style="color:${f1Clr};font-weight:700">${f1}%</span></span>
+        <span style="color:var(--muted);font-size:8px">TP:${cm.TP} FP:${cm.FP} FN:${cm.FN}</span>
+      </div>`;
+    })() : '';
+    return `<div class="acc-row" style="flex-direction:column;align-items:flex-start;gap:2px">
+      <div style="display:flex;align-items:center;width:100%;gap:8px">
+        <div class="acc-action" style="color:${clr};font-weight:700">${a}</div>
+        <div class="acc-track" style="flex:1"><div class="acc-fill" style="width:${pct}%;background:${clr}"></div></div>
+        <div class="acc-pct" style="color:${clr}">${pct}%</div>
+        <div class="acc-n">${d.win}/${d.total}</div>
+      </div>
+      ${cmHtml}
+    </div>`;
+  }).filter(Boolean).join('') || `<div class="acc-row"><div class="acc-action" style="color:var(--muted)">ยังไม่มีข้อมูลใน summary</div></div>`;
+  if(el) el.innerHTML = html;
+  if(el2) el2.innerHTML = html;
+}
+
+// ---- Build ml_config.json ----
+function buildMLConfigJSON() {
+  const cfg = {
+    version: `v${mlVersion}.${parseSummaryRows().length}`,
+    generated: new Date().toISOString(),
+    weights: mlWeights,
+    thresholds: {
+      buy_add: mlThresholds.buy,
+      hold: {min: mlThresholds.buy, max: mlThresholds.partial},
+      partial_sell: mlThresholds.partial,
+      sell_all: mlThresholds.sell,
+    },
+    heat_boundary: {
+      cool_max: 64,
+      hot_min: 65,
+      hot_max: 79,
+      extreme_min: 80,
+    },
+    confidence_boundary: {
+      A: 7,
+      B: 5,
+      C: 0,
+    },
+    risk_boundary: {
+      low_min: 6,
+      medium_min: 4,
+      high_max: 3,
+    },
+    correlations: mlCorrelations,
+    groupRegime: mlGroupRegime,
+    accuracy: Object.fromEntries(
+      Object.entries(mlAccuracy).map(([k,v])=>([k,{acc:+(v.acc*100).toFixed(1),win:v.win,total:v.total}]))
+    ),
+    normalize: {
+      RSI_min:30,RSI_range:70,
+      Heat_min:1,Heat_range:2,
+      Score_min:4,Score_range:4,
+    }
+  };
+  const json = JSON.stringify(cfg, null, 2);
+  const el = document.getElementById('mlConfigJson');
+  if(el) el.textContent = json;
+  return json;
+}
+
+async function exportMLConfig() {
+  const json = buildMLConfigJSON();
+
+  // Download เหมือนเดิม
+  const blob = new Blob([json], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+
+  // Save ขึ้น Supabase แทน Google Drive
+  const btn = document.getElementById('exportBtn');
+  const origTxt = btn.textContent;
+  btn.textContent = '⏳ Saving...';
+  btn.disabled = true;
+  try {
+    const cfg = JSON.parse(json);
+    // upsert ml_config ใน Supabase (config_type='backend')
+    const { error } = await (await sb.from('ml_config')).upsert({
+      version:      cfg.version,
+      config_type:  'backend',
+      weights:      cfg.weights,
+      thresholds:   cfg.thresholds,
+      normalize:    cfg.normalize,
+      correlations: cfg.correlations||{},
+      group_regime: cfg.groupRegime||{},
+      note:         cfg.note||'',
+      is_active:    true,
+      trained_at:   cfg.generated||new Date().toISOString(),
+    }, { onConflict: 'version,config_type' });
+
+    if(error) throw new Error(error.message||JSON.stringify(error));
+
+    btn.textContent = '✅ Saved to Supabase!';
+    btn.style.borderColor = 'var(--acc)';
+    btn.style.color = 'var(--acc)';
+    setTimeout(() => {
+      btn.textContent = origTxt;
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.disabled = false;
+    }, 3000);
+  } catch(err) {
+    console.warn('[exportMLConfig] Save ไม่ได้:', err);
+    btn.textContent = '⚠️ Save ไม่ได้';
+    btn.style.borderColor = 'var(--warn)';
+    btn.style.color = 'var(--warn)';
+    setTimeout(() => {
+      btn.textContent = origTxt;
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.disabled = false;
+    }, 3000);
+  }
+}
+
+function exportSummaryCSV(mode) {
+  // columns ตรงกับ sheet summary
+  const headers = ['date','time','session','symbol','group',
+    'action_recommended','score','price','cost_price','pnl_pct','category','notes'];
+
+  let rows = parseSummaryRows();
+
+  // ถ้า mode=filtered ให้กรองตาม filter ปัจจุบัน
+  if(mode==='filtered') {
+    const search   = (document.getElementById('sumSearch')?.value||'').toUpperCase().trim();
+    const outcomeF = document.getElementById('sumOutcomeFilter')?.value||'ALL';
+    const dateFrom = document.getElementById('sumDateFrom')?.value||'';
+    const dateTo   = document.getElementById('sumDateTo')?.value||'';
+    rows = rows.filter(r=>{
+      if(sumFilterAction!=='ALL' && r.action!==sumFilterAction) return false;
+      if(search && !r.symbol.includes(search)) return false;
+      if(outcomeF!=='ALL'){
+        if(outcomeF==='WIN'  && r.outcome!=='WIN')  return false;
+        if(outcomeF==='LOSS' && r.outcome!=='LOSS') return false;
+        if(outcomeF==='PENDING' && r.outcome!=='PENDING'&&r.outcome!=='HOLD') return false;
+      }
+      if(dateFrom && r.date < dateFrom) return false;
+      if(dateTo   && r.date > dateTo)   return false;
+      return true;
+    });
+  }
+
+  if(rows.length===0) {
+    alert('ไม่มีข้อมูลที่จะ export ครับ');
+    return;
+  }
+
+  // map กลับเป็น Thai category
+  const toThai = a => {
+    if(a==='BUY')          return 'ซื้อเพิ่ม';
+    if(a==='TAKE PROFIT')  return 'ขายหมด';
+    if(a==='PARTIAL SELL') return 'ขายบางส่วน';
+    if(a==='WATCH')        return 'ถือต่อ';
+    return a;
+  };
+
+  const csvRows = [
+    headers.join(','),
+    ...rows.sort((a,b)=>a.date.localeCompare(b.date)).map(r=>[
+      r.date,
+      r.time||'',
+      r.session||'',
+      r.symbol,
+      r.group||'',
+      toThai(r.action),
+      r.score||'',
+      r.price||'',
+      r.cost_price||'',
+      r.pnl_pct!==null?r.pnl_pct:'',
+      r.category||toThai(r.action),
+      (r.note||'').replace(/,/g,' ')
+    ].join(','))
+  ];
+
+  const blob = new Blob(['\uFEFF'+csvRows.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const suffix = mode==='filtered'?'_filtered':'_all';
+  a.download = `summary${suffix}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function renderMLPreview() {
+  if(!mlTrained) {
+    document.getElementById('mlStatusTxt').textContent='กด Train เพื่อเริ่ม Algorithm 4 ขั้นตอน';
+  }
+}
+
+/* ============================================================ TAB 4: SUMMARY HISTORY */
+let sumFilterAction = 'ALL';
+const ACTUAL_ACTIONS = ['—','ซื้อ','ซื้อเพิ่ม','ขายบางส่วน','ขายหมด','ถือ','ยังถืออยู่','ไม่สนใจ'];
+const actualActionMap = {};
+function actualKey(r){ return `${r.date}_${r.symbol}_${r.session||''}`; }
+function setActualAction(key, val){ actualActionMap[key] = val; }
+function renderSummaryTab() {
+  const rows = parseSummaryRows();
+  // normalize actual_action สำหรับ filter buttons
+  const normActualBtn = v => {
+    if(!v||v==='—'||v==='ไม่สนใจ') return null;
+    const m = {
+      'ซื้อ':'BUY','ซื้อเพิ่ม':'BUY',
+      'ขาย':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','ขายบางส่วน':'PARTIAL SELL',
+      'ถือ':'WATCH','ถือต่อ':'WATCH'
+    };
+    return m[v] || v.toUpperCase();
+  };
+  // Action filter buttons จาก actual_action
+  const actionSet = new Set(
+    rows.map(r=>normActualBtn(r.actual_action)||r.action).filter(Boolean)
+  );
+  const actions = ['ALL',...actionSet];
+  document.getElementById('sumActionFilter').innerHTML = actions.map(a=>
+    `<button class="sum-fb ${a===sumFilterAction?'on':''}" onclick="setSumActionFilter('${a}')">${a}</button>`
+  ).join('');
+  // Score chart
+  renderScoreChart();
+  // Accuracy + Distribution จาก actual_action
+  const accMap = computeAccuracy(rows);
+  renderAccBars(accMap);
+  renderSummaryDist(rows);
+  filterSummary();
+}
+
+function setSumActionFilter(a) {
+  sumFilterAction = a;
+  renderSummaryTab();
+}
+
+function renderSummaryDist(rows) {
+  const el = document.getElementById('summaryDist');
+  const normActualDist = v => {
+    if(!v||v==='—'||v==='ไม่สนใจ') return null;
+    const m = {
+      'ซื้อ':'BUY','ซื้อเพิ่ม':'BUY',
+      'ขาย':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','ขายบางส่วน':'PARTIAL SELL',
+      'ถือ':'WATCH','ถือต่อ':'WATCH'
+    };
+    return m[v] || v.toUpperCase();
+  };
+  const map = {};
+  rows.forEach(r=>{
+    const a = normActualDist(r.actual_action) || r.action;
+    if(!a) return;
+    // ไม่สนใจ/SKIP = ไม่นับ
+    if(a==='SKIP' || a==='ไม่สนใจ') return;
+    // "ถือรายวัน" ที่ไม่มี pnl_pct = daily log ไม่ใช่ trade จริง → ไม่นับใน distribution
+    if(a==='WATCH' && r.pnl_pct === null) return;
+    map[a]=(map[a]||0)+1;
+  });
+  const total = Object.values(map).reduce((s,v)=>s+v,0)||1;
+  const clrs = {'BUY':'var(--acc)','TAKE PROFIT':'var(--tp)','PARTIAL SELL':'var(--warn)','WATCH':'var(--acc2)'};
+  el.innerHTML = Object.entries(map).map(([a,n])=>{
+    const pct=(n/total*100).toFixed(0);
+    const clr=clrs[a]||'var(--acc2)';
+    return `<div class="acc-row">
+      <div class="acc-action" style="color:${clr};font-weight:700">${a}</div>
+      <div class="acc-track"><div class="acc-fill" style="width:${pct}%;background:${clr}"></div></div>
+      <div class="acc-pct" style="color:${clr}">${pct}%</div>
+      <div class="acc-n">${n} รายการ</div>
+    </div>`;
+  }).join('') || '<div style="font-family:var(--mono);font-size:10px;color:var(--muted)">ไม่มีข้อมูลใน summary</div>';
+}
+
+function setDatePreset(preset) {
+  const today = new Date();
+  const fmt = d => d.toISOString().slice(0,10);
+  let from='', to=fmt(today);
+  if(preset==='7d'){
+    const d=new Date(today); d.setDate(d.getDate()-6); from=fmt(d);
+  } else if(preset==='30d'){
+    const d=new Date(today); d.setDate(d.getDate()-29); from=fmt(d);
+  } else if(preset==='mtd'){
+    from=fmt(new Date(today.getFullYear(), today.getMonth(), 1));
+  } else {
+    from=''; to='';
+  }
+  const f=document.getElementById('sumDateFrom');
+  const t=document.getElementById('sumDateTo');
+  if(f) f.value=from;
+  if(t) t.value=to;
+  filterSummary();
+}
+
+function filterSummary() {
+  const rows = parseSummaryRows();
+  const search = (document.getElementById('sumSearch')?.value||'').toUpperCase().trim();
+  const outcomeF = document.getElementById('sumOutcomeFilter')?.value||'ALL';
+  const dateFrom = document.getElementById('sumDateFrom')?.value||'';
+  const dateTo   = document.getElementById('sumDateTo')?.value||'';
+  const normActualFilter = v => {
+    if(!v||v==='—'||v==='ไม่สนใจ') return null;
+    const m = {
+      'ซื้อ':'BUY','ซื้อเพิ่ม':'BUY',
+      'ขาย':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','ขายบางส่วน':'PARTIAL SELL',
+      'ถือ':'WATCH','ถือต่อ':'WATCH'
+    };
+    return m[v] || v.toUpperCase();
+  };
+  const filtered = rows.filter(r=>{
+    const actualAct = normActualFilter(r.actual_action) || r.action;
+    if(sumFilterAction!=='ALL' && actualAct!==sumFilterAction) return false;
+    if(search && !r.symbol.includes(search)) return false;
+    if(outcomeF!=='ALL'){
+      if(outcomeF==='WIN'  && r.outcome!=='WIN')     return false;
+      if(outcomeF==='LOSS' && r.outcome!=='LOSS')    return false;
+      if(outcomeF==='PENDING' && r.outcome!=='PENDING' && r.outcome!=='HOLD') return false;
+    }
+    if(dateFrom && r.date < dateFrom) return false;
+    if(dateTo   && r.date > dateTo)   return false;
+    return true;
+  });
+  document.getElementById('sumCount').textContent=`${filtered.length} รายการ`;
+
+  // ปรับ chart ตาม filtered rows ด้วย
+  const accMap = computeAccuracy(filtered);
+  renderAccBars(accMap);
+  renderSummaryDist(filtered);
+
+  const aClr = a=>{
+    if(a==='BUY') return 'var(--acc)';
+    if(a.includes('PROFIT')||a.includes('PARTIAL')) return 'var(--tp)';
+    return 'var(--warn)';
+  };
+  const outHtml = r => {
+    const pnl = r.pnl_pct;
+    const out = r.outcome;
+    if(out==='WIN')  return `<span class="outcome-good">✅ +${pnl!==null?pnl.toFixed(2):'?'}%</span>`;
+    if(out==='LOSS') return `<span class="outcome-bad">❌ ${pnl!==null?pnl.toFixed(2):'?'}%</span>`;
+    if(out==='HOLD') return `<span style="color:var(--warn)">➡️ ${pnl!==null?pnl.toFixed(2):'0'}%</span>`;
+    return `<span class="outcome-na">⏳ —</span>`;
+  };
+
+  // Compute ML score for each row's latest data
+  const latest = getLatest();
+  const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
+  const latestMap = {};
+  latest.forEach(r=>{r._comp=composite(r,maxPct);latestMap[r.symbol]=r;});
+
+  document.getElementById('sumBody').innerHTML = filtered.length===0
+    ? `<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่มีข้อมูลใน summary sheet</td></tr>`
+    : filtered.sort((a,b)=>b.date.localeCompare(a.date)).map(r=>{
+        const stock = latestMap[r.symbol];
+        const alHtml = stock ? aiLabelPill(aiLabel(stock)) : aiLabelPill(r.action);
+        const scoreHtml = stock
+          ? `<span style="color:${compClr(stock._comp)};font-weight:700">${stock._comp}</span>`
+          : `<span style="color:var(--muted)">—</span>`;
+        const pnlClr = r.pnl_pct===null?'var(--muted)':r.pnl_pct>0?'var(--acc)':r.pnl_pct<0?'var(--danger)':'var(--warn)';
+        const pnlTxt = r.pnl_pct!==null ? (r.pnl_pct>0?'+':'')+r.pnl_pct.toFixed(2)+'%' : '—';
+        const actBg  = r.action==='BUY'?'rgba(0,255,178,.12)':r.action.includes('PROFIT')||r.action.includes('PARTIAL')?'rgba(255,107,53,.12)':'rgba(255,193,7,.1)';
+        return `<tr>
+          <td style="color:#8FCFBA">${r.date}</td>
+          <td style="font-weight:700;color:var(--text)">${r.symbol}<div style="font-size:9px;color:var(--muted)">${r.group}</div></td>
+          <td>${alHtml}</td>
+          <td><select onchange="setActualAction('${actualKey(r)}',this.value)" style="font-family:var(--mono);font-size:10px;padding:4px 8px;background:#1a1a2e;border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:3px;outline:none;cursor:pointer;">${ACTUAL_ACTIONS.map(a=>`<option value="${a}" ${(actualActionMap[actualKey(r)]||'—')===a?'selected':''}>${a}</option>`).join('')}</select></td>
+          <td style="font-family:var(--mono)">${r.price>0?'$'+r.price.toFixed(2):'—'}</td>
+          <td style="font-family:var(--mono);font-weight:700;color:${pnlClr}">${pnlTxt}</td>
+          <td>${scoreHtml}</td>
+          <td>${outHtml(r)}</td>
+          <td style="color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;font-size:10px">${r.note}</td>
+        </tr>`;
+      }).join('');
+}
+
+/* ============================================================ ALERT SUMMARY */
+function updateAlertSummary() {
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp=composite(r,maxPct50); });
+  const changes = [];
+  latest.forEach(r => {
+    const prev = prevLatestActions[r.symbol];
+    const curr = aiLabel(r);
+    if(prev && prev !== curr) changes.push({symbol:r.symbol,from:prev,to:curr,group:r.group,date:r.date,session:r.session});
+  });
+  const body = document.getElementById('alertSummaryBody');
+  const count = document.getElementById('alertCount');
+  if(changes.length === 0) {
+    body.innerHTML=`<div class="no-alerts">ไม่มีการเปลี่ยนแปลง Signal</div>`;
+    count.textContent=`ล่าสุด: ${new Date().toLocaleTimeString('th-TH')}`;
+    document.querySelector('.alert-summary').style.borderColor='rgba(255,255,255,.08)';
+    return;
+  }
+  document.querySelector('.alert-summary').style.borderColor='rgba(255,193,7,.3)';
+  count.textContent=`${changes.length} รายการ · ${new Date().toLocaleTimeString('th-TH')}`;
+  const aClr=a=>a==='STRONG BUY'||a==='BUY'?'var(--acc)':a==='SELL'||a==='STOPLOSS'?'var(--danger)':a==='WATCH'?'var(--warn)':'var(--muted)';
+  body.innerHTML=changes.map(c=>`
+    <div class="alert-row">
+      <span class="alert-sym">${c.symbol}</span>
+      <span class="alert-change">
+        <span style="color:${aClr(c.from)}">${c.from}</span>
+        <span style="color:var(--muted);margin:0 6px">→</span>
+        <span style="color:${aClr(c.to)};font-weight:700">${c.to}</span>
+        <span style="color:var(--muted);font-size:9px;margin-left:8px">${c.group}</span>
+      </span>
+      <span class="alert-time">${c.date} · ${c.session}</span>
+    </div>`).join('');
+  showAlertPopup(changes);
+}
+
+function showAlertPopup(changes) {
+  const aClr=a=>a==='STRONG BUY'||a==='BUY'?'var(--acc)':a==='SELL'||a==='STOPLOSS'?'var(--danger)':a==='WATCH'?'var(--warn)':'var(--muted)';
+  const overlay=document.createElement('div');
+  overlay.className='alert-overlay';
+  overlay.innerHTML=`<div class="alert-box">
+    <div class="alert-title">🔔 Signal เปลี่ยน! — ${changes.length} หุ้น</div>
+    <div class="alert-items">${changes.map(c=>`
+      <div class="alert-item">
+        <div class="alert-sym2">${c.symbol}</div>
+        <div class="alert-change">
+          <div style="font-size:9px;color:var(--muted);margin-bottom:3px">${c.group}</div>
+          <span style="color:${aClr(c.from)}">${c.from}</span>
+          <span style="color:var(--muted);margin:0 6px">→</span>
+          <span style="color:${aClr(c.to)};font-weight:700">${c.to}</span>
+        </div>
+      </div>`).join('')}</div>
+    <button class="alert-close" onclick="this.closest('.alert-overlay').remove()">รับทราบ · ปิด</button>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+}
+
+/* ============================================================ UPLOAD */
+function handleUpload(files) {
+  const msg = document.getElementById('uploadMsg');
+  let newRows=[], done=0, total=files.length;
+  Array.from(files).forEach(file => {
+    const reader=new FileReader();
+    reader.onload=e=>{
+      newRows=newRows.concat(parseCSV(e.target.result));
+      done++;
+      if(done===total){
+        // dedup: ถ้ามี run_seq ใช้เป็น key หลัก (แม่นกว่า date|time ที่ format อาจต่างกัน)
+        // fallback: date|time|symbol สำหรับ row ที่ run_seq = 0
+        const seen = new Set(allRows.map(r =>
+          r.run_seq > 0
+            ? `seq|${r.run_seq}`
+            : `dt|${r.date}|${r.time}|${r.symbol}`
+        ));
+        const toAdd = newRows.filter(r => {
+          const key = r.run_seq > 0
+            ? `seq|${r.run_seq}`
+            : `dt|${r.date}|${r.time}|${r.symbol}`;
+          return !seen.has(key);
+        });
+        if(toAdd.length===0){msg.innerHTML=`<span style="color:var(--warn)">ข้อมูลซ้ำทั้งหมด</span>`;return;}
+        checkAlertsOnUpload(toAdd);
+        allRows=allRows.concat(toAdd);
+        // sort by run_seq ถ้ามี ไม่งั้น fallback date+time string
+        allRows.sort((a, b) => {
+          const aSeq = a.run_seq || 0;
+          const bSeq = b.run_seq || 0;
+          if (aSeq > 0 || bSeq > 0) return aSeq - bSeq;
+          return (a.date + a.time) < (b.date + b.time) ? -1 : 1;
+        });
+        document.getElementById('recordCount').textContent=`${allRows.length} records`;
+        msg.innerHTML=`<b style="color:var(--acc)">✓ เพิ่ม ${toAdd.length} records</b> · รวม ${allRows.length} · <span style="color:var(--warn)">อย่าลืม paste เข้า Sheet</span>`;
+        renderAll();
+      }
+    };
+    reader.readAsText(file,'utf-8');
+  });
+}
+
+function checkAlertsOnUpload(toAdd) {
+  const prev={};
+  const curLatest = getLatest();
+  const maxPctCur = Math.max(...curLatest.map(r=>r.pct_ema50),1);
+  curLatest.forEach(r=>{ r._comp=composite(r,maxPctCur); prev[r.symbol]=aiLabel(r); });
+  const combined=[...allRows,...toAdd];
+  const map={};
+  combined.forEach(r=>{
+    const k=r.symbol;
+    if(!map[k]){map[k]=r;return;}
+    const cur=map[k];
+    if(r.date>cur.date){map[k]=r;return;}
+    if(r.date===cur.date&&(SESSION_ORDER[r.session]||0)>=(SESSION_ORDER[cur.session]||0)) map[k]=r;
+  });
+  // คำนวณ aiLabel สำหรับ combined latest
+  const newLatest = Object.values(map);
+  const maxPctNew = Math.max(...newLatest.map(r=>r.pct_ema50),1);
+  newLatest.forEach(r=>{ r._comp=composite(r,maxPctNew); });
+  const changes=[];
+  newLatest.forEach(r=>{
+    const p=prev[r.symbol];
+    const curr=aiLabel(r);
+    if(p&&p!==curr) changes.push({symbol:r.symbol,from:p,to:curr,group:r.group,date:r.date,session:r.session});
+  });
+  if(changes.length>0) showAlertPopup(changes);
+}
+
+/* ============================================================ RENDER HELPERS */
+function rsiClr(v){return v>=80?'var(--danger)':v>=70?'var(--tp)':v>=60?'var(--warn)':'var(--acc)';}
+function heatClr(h){return h==='EXTREME'?'var(--tp)':h==='HOT'?'var(--warn)':'var(--acc)';}
+function compClr(v){
+  if(v>=mlThresholds.sell) return 'var(--danger)';
+  if(v>=mlThresholds.partial) return 'var(--tp)';
+  if(v>=mlThresholds.buy) return 'var(--warn)';
+  return 'var(--acc)';
+}
+function gradeLabel(v){
+  if(v>=mlThresholds.sell)    return {txt:'🔥 MOMENTUM',bg:'rgba(255,107,53,.15)',clr:'var(--tp)'};
+  if(v>=mlThresholds.partial) return {txt:'⚡ BUILDING',bg:'rgba(255,193,7,.12)',clr:'var(--warn)'};
+  return {txt:'🟢 FRESH BUY',bg:'rgba(0,255,178,.12)',clr:'var(--acc)'};
+}
+function actionPill(a){
+  if(a==='BUY') return `<span class="ap ap-BUY">BUY</span>`;
+  if(a==='TAKE PROFIT') return `<span class="ap ap-TP">TAKE PROFIT</span>`;
+  return `<span class="ap ap-W">WATCH</span>`;
+}
+
+function entryExitBox(r) {
+  const pct=r.pct_ema50;
+  const entryOk=r.action==='BUY'&&r.score>=7&&r.confidence==='A'&&r.rsi<65&&r.heat==='COOL'&&pct<5&&r.risk==='LOW';
+  if(r.action==='BUY'){
+    const sl=+(r.ema50*.98).toFixed(2),tp1=+(r.price*1.08).toFixed(2),tp2=+(r.price*1.15).toFixed(2);
+    const slPct=+((r.price-sl)/r.price*100).toFixed(1);
+    const status=entryOk?`<span style="color:var(--acc);font-weight:700">✅ เข้าได้เลย</span>`:`<span style="color:var(--warn);font-weight:700">⚠️ ระวัง</span>`;
+    return `<div class="ebox">
+      <div class="ebox-row">${status}</div>
+      <div class="ebox-row"><span class="elbl">Entry</span><span class="eval">$${r.price.toFixed(2)}</span></div>
+      <div class="ebox-row"><span class="elbl">Stop</span><span class="eval" style="color:var(--danger)">$${sl} <small>(-${slPct}%)</small></span></div>
+      <div class="ebox-row"><span class="elbl">TP1</span><span class="eval" style="color:var(--warn)">$${tp1} <small>(+8%)</small></span></div>
+      <div class="ebox-row"><span class="elbl">TP2</span><span class="eval" style="color:var(--acc)">$${tp2} <small>(+15%)</small></span></div>
+    </div>`;
+  }
+  if(r.action==='TAKE PROFIT'){
+    return `<div class="ebox">
+      <div class="ebox-row"><span style="color:var(--tp);font-weight:700">🔴 ขายได้เลย</span></div>
+      <div class="ebox-row"><span class="elbl">ราคา</span><span class="eval">$${r.price.toFixed(2)}</span></div>
+      <div class="ebox-row"><span class="elbl">RSI</span><span class="eval" style="color:var(--danger)">${r.rsi} overbought</span></div>
+      <div class="ebox-row"><span class="elbl">%EMA50</span><span class="eval" style="color:var(--tp)">+${pct}% วิ่งไปมากแล้ว</span></div>
+    </div>`;
+  }
+  const tp1=+(r.price*1.08).toFixed(2);
+  return `<div class="ebox">
+    <div class="ebox-row"><span style="color:var(--warn);font-weight:700">👁️ รอ signal ชัดขึ้น</span></div>
+    <div class="ebox-row"><span class="elbl">ราคา</span><span class="eval">$${r.price.toFixed(2)}</span></div>
+    <div class="ebox-row"><span class="elbl">Entry ถ้า</span><span class="eval" style="color:var(--muted)">RSI &lt;65 + COOL</span></div>
+    <div class="ebox-row"><span class="elbl">Target</span><span class="eval" style="color:var(--warn)">$${tp1} <small>(+8%)</small></span></div>
+  </div>`;
+}
+
+const medals=['🥇','🥈','🥉'];
+const rankCls=i=>i===0?'r1':i===1?'r2':i===2?'r3':'';
+
+/* ============================================================ RENDER ALL */
+function renderAll() {
+  // อัพเดต global portMap ก่อนเสมอ
+  Object.keys(portMap).forEach(k=>delete portMap[k]);
+  if(portfolioRows.length > 1){
+    portfolioRows.slice(1).forEach(row=>{
+      if(row[0]&&row[1]) portMap[row[0].trim().toUpperCase()] = parseFloat(row[1])||0;
+    });
+  }
+
+  const latest=getLatest();
+  const maxPct50=Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{r._comp=composite(r,maxPct50);});
+  latest.sort((a,b)=>b._comp-a._comp);
+  const dates=[...new Set(allRows.map(r=>r.date))].sort();
+  const buyList=latest.filter(r=>r.action==='BUY');
+  const tpList=latest.filter(r=>r.action==='TAKE PROFIT');
+  const avgRsi=latest.length?(latest.reduce((s,r)=>s+r.rsi,0)/latest.length).toFixed(1):0;
+  const top=latest[0];
+  document.getElementById('kpiRow').innerHTML=[
+    {l:'Total Symbols',v:latest.length,s:`${dates.length} วัน · ${allRows.length} records`,c:'g'},
+    {l:'BUY Signals',v:buyList.length,s:'upside ยังเหลือ · Conf A',c:'b'},
+    {l:'Top Score',v:`${top?.symbol||'-'}`,s:`${top?._comp||0}/100 · Score ${top?.score||0}/8`,c:'o'},
+    {l:'Avg RSI',v:avgRsi,s:'ทุก symbol · latest',c:'w'},
+    {l:'Take Profit',v:tpList.length,s:'วิ่งไปแล้ว · ระวัง',c:'r'},
+  ].map(k=>`<div class="kpi ${k.c}">
+    <div class="kpi-lbl">${k.l}</div>
+    <div class="kpi-val">${k.v}</div>
+    <div class="kpi-sub">${k.s}</div>
+  </div>`).join('');
+  setupFilters(latest,maxPct50);
+  renderRanking(latest,maxPct50);
+  renderTimeline();
+  setTimeout(buildSymFilter,0);
+  // render Stock Latest tab ทุกครั้งที่ข้อมูลเปลี่ยน
+  renderStockLatest();
+  // render Summary tab ล่วงหน้า ไม่ต้องรอกด tab
+  renderSummaryTab();
+}
+
+/* ============================================================ FILTERS */
+function setupFilters(latest,maxPct50) {
+  document.getElementById('fbar').innerHTML=['ALL','BUY','TAKE PROFIT','WATCH','Conf A','Score ≥7'].map(f=>
+    `<button class="fb ${f===filterNow?'on':''}" onclick="setFilter('${f}')">${f}</button>`).join('');
+}
+function setFilter(f){
+  filterNow=f;
+  document.querySelectorAll('#fbar .fb').forEach(b=>b.classList.toggle('on',b.textContent===f));
+  const latest=getLatest();
+  const maxPct50=Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{r._comp=composite(r,maxPct50);});
+  latest.sort((a,b)=>b._comp-a._comp);
+  renderRanking(latest,maxPct50);
+}
+
+function renderRanking(latest,maxPct50) {
+  const filtered=latest.filter(r=>{
+    if(filterNow==='ALL') return true;
+    if(filterNow==='BUY') return r.action==='BUY';
+    if(filterNow==='TAKE PROFIT') return r.action==='TAKE PROFIT';
+    if(filterNow==='WATCH') return r.action==='WATCH';
+    if(filterNow==='Conf A') return r.confidence==='A';
+    if(filterNow==='Score ≥7') return r.score>=7;
+    return true;
+  });
+  const mxRsi=Math.max(...filtered.map(r=>r.rsi),1);
+  const mxPct=Math.max(...filtered.map(r=>r.pct_ema50),1);
+  const mxMom=Math.max(...filtered.map(r=>r.ema50>0?(r.ema20-r.ema50)/r.ema50*100:0),1);
+  const colors={RSI:'var(--danger)',Heat:'var(--warn)',pct50:'var(--acc2)',EMAMom:'var(--purple)',Score:'var(--teal)'};
+  document.getElementById('rankGrid').innerHTML=filtered.map((r,i)=>{
+    const gi=latest.indexOf(r);
+    const mom=r.ema50>0?+((r.ema20-r.ema50)/r.ema50*100).toFixed(2):0;
+    const g=gradeLabel(r._comp);
+    const cClr=compClr(r._comp);
+    const bars=[
+      {lbl:'RSI',w:r.rsi/mxRsi*100,clr:rsiClr(r.rsi),disp:r.rsi.toString()},
+      {lbl:'Heat',w:r.heat_n/3*100,clr:heatClr(r.heat),disp:r.heat},
+      {lbl:'%EMA50',w:mxPct>0?r.pct_ema50/mxPct*100:0,clr:'#29B6F6',disp:`+${r.pct_ema50}%`},
+      {lbl:'EMAMom',w:mxMom>0?mom/mxMom*100:0,clr:'#CE93D8',disp:`+${mom.toFixed(2)}%`},
+      {lbl:'Score',w:r.score/8*100,clr:'#80CBC4',disp:`${r.score}/8`},
+    ];
+    const chips=[
+      {txt:`RSI ${r.rsi}`,bg:`${rsiClr(r.rsi)}20`,brd:`${rsiClr(r.rsi)}50`,clr:rsiClr(r.rsi)},
+      {txt:r.heat,bg:`${heatClr(r.heat)}18`,brd:`${heatClr(r.heat)}45`,clr:heatClr(r.heat)},
+      {txt:`Conf ${r.confidence}`,bg:'rgba(0,255,178,.1)',brd:'rgba(0,255,178,.3)',clr:'var(--acc)'},
+      {txt:r.risk,bg:'rgba(255,255,255,.05)',brd:'rgba(255,255,255,.12)',clr:r.risk==='LOW'?'var(--acc)':r.risk==='MEDIUM'?'var(--warn)':'var(--danger)'},
+    ];
+    const isTop3=gi<3;
+    return `<div class="rcard ${rankCls(gi)}">
+      <div class="c-rank">
+        ${isTop3?`<span class="medal">${medals[gi]}</span>`:''}
+        <div class="rnum ${isTop3?'':'dim'}">${gi+1}</div>
+      </div>
+      <div class="c-info">
+        <div class="sym">${r.symbol}</div>
+        <div class="grp">${r.group} · ${r.date}</div>
+        <div class="act">${actionPill(r.action)}</div>
+        ${entryExitBox(r)}
+      </div>
+      <div class="c-break">
+        <div class="break-title">ที่มาคะแนน${mlTrained?' · ML weights':' · default weights'}</div>
+        <div class="brows">${bars.map(b=>`
+          <div class="brow">
+            <div class="blbl">${b.lbl}</div>
+            <div class="btrack"><div class="bfill" style="width:${Math.max(0,b.w).toFixed(1)}%;background:${b.clr}"></div></div>
+            <div class="bval" style="color:${b.clr}">${b.disp}</div>
+          </div>`).join('')}</div>
+      </div>
+      <div class="c-chips">
+        <div class="chip-row">${chips.map(c=>`<span class="chip" style="background:${c.bg};border-color:${c.brd};color:${c.clr}">${c.txt}</span>`).join('')}</div>
+        <div class="pricebox">ราคา: <b>$${r.price.toLocaleString('en',{minimumFractionDigits:2})}</b> · ${r.session} · ${r.date}</div>
+      </div>
+      <div class="c-score">
+        <div class="score-lbl">คะแนนกำไร</div>
+        <div class="score-val" style="color:${cClr}">${r._comp}</div>
+        <div class="score-sub">จาก 100</div>
+        <div class="grade" style="background:${g.bg};color:${g.clr}">${g.txt}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ============================================================ TIMELINE */
+function buildSymFilter() {
+  const bar=document.getElementById('symFilterBar');
+  if(!bar) return;
+  const syms=[...new Set(allRows.map(r=>r.symbol))].sort();
+  bar.innerHTML=`<button class="sfb ${symFilterNowTl==='ALL'?'on':''}" onclick="setSymFilter('ALL')">ALL</button>`+
+    syms.map(s=>`<button class="sfb ${symFilterNowTl===s?'on':''}" onclick="setSymFilter('${s}')">${s}</button>`).join('');
+}
+function setSymFilter(s){
+  symFilterNowTl=s;
+  const inp=document.getElementById('symSearch');
+  if(inp) inp.value='';
+  buildSymFilter();
+  filterTimeline();
+}
+function filterTimeline(){
+  const search=(document.getElementById('symSearch')?.value||'').toUpperCase().trim();
+  document.getElementById('tlBody').innerHTML=renderTimelineRows(symFilterNowTl,search);
+}
+function renderTimeline(){
+  document.getElementById('tlBody').innerHTML=renderTimelineRows('ALL','');
+}
+function renderTimelineRows(symFilter,search) {
+  symFilter=symFilter||'ALL'; search=search||'';
+  // สร้าง latestMap เพื่อดึง aiLabel + composite score
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp=composite(r,maxPct50); r._aiLabel=aiLabel(r); });
+  const latestMap = {};
+  latest.forEach(r=>{ latestMap[r.symbol]=r; });
+
+  return [...allRows]
+    .filter(r=>{
+      if(symFilter!=='ALL'&&r.symbol!==symFilter) return false;
+      if(search&&!r.symbol.includes(search)&&!r.group.toUpperCase().includes(search)) return false;
+      return true;
+    })
+    .sort((a,b)=>(b.date+b.time)<(a.date+a.time)?-1:1)
+    .map(r=>{
+      const lx = latestMap[r.symbol];
+      const al = lx?._aiLabel || r.action;
+      const comp = lx?._comp ?? null;
+      const compTxt = comp!==null ? comp : r.score+'/8';
+      const compClr2 = comp!==null ? compClr(comp) : 'var(--acc)';
+      return `<tr>
+        <td style="color:#8FCFBA">${r.date}</td>
+        <td style="font-weight:700;color:var(--text);font-size:12px">${r.symbol}</td>
+        <td>${aiLabelPill(al)}</td>
+        <td style="color:${compClr2};font-weight:700">${compTxt}</td>
+        <td style="color:var(--text);font-weight:600">$${r.price.toLocaleString('en',{minimumFractionDigits:2})}</td>
+      </tr>`;
+    }).join('')||`<tr><td colspan="5" style="text-align:center;padding:20px;color:#8FCFBA">ไม่พบข้อมูล</td></tr>`;
+}
+
+/* ============================================================ PORTFOLIO */
+function renderPortfolio() {
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
+
+  // อัพเดต global portMap
+  Object.keys(portMap).forEach(k=>delete portMap[k]);
+  if(portfolioRows.length > 1){
+    portfolioRows.slice(1).forEach(row=>{
+      if(row[0]&&row[1]) portMap[row[0].trim().toUpperCase()] = parseFloat(row[1])||0;
+    });
+  }
+
+  // SL % ตาม Risk
+  const slPct = risk => risk==='LOW'?0.08:risk==='HIGH'?0.12:0.10;
+
+  // Upside = 100 - Composite Score (ยิ่ง score ต่ำ/ติดลบ upside ยิ่งสูง)
+  const upside = comp => +(Math.min(130, 100 - comp)).toFixed(1);
+
+  const holdings = Object.keys(portMap).map(sym => {
+    const cost  = portMap[sym];
+    const stock = latest.find(r=>r.symbol===sym);
+    const price = stock?.price||0;
+    const comp  = stock ? (isNaN(stock._comp)?0:stock._comp) : 0;
+    const pnl   = cost>0&&price>0 ? +((price-cost)/cost*100).toFixed(2) : null;
+    const risk  = stock?.risk||'MEDIUM';
+    const slPrice  = cost>0 ? +(cost*(1-slPct(risk))).toFixed(2) : null;
+    const slHit    = slPrice!==null && price>0 && price<=slPrice;
+    const upsideVal = upside(comp);
+    const ts = trendSlope(sym, maxPct50);
+    const hs = stock ? healthScore(stock, ts.slope) : 0;
+    const ms = stock ? momentumScore(stock) : 0;
+
+    const hObj = {slHit, pnl, comp, _health:hs, _momentum:ms, _slope:ts};
+    const {action, cls:actionCls} = portfolioAction(hObj);
+    return {sym, cost, price, pnl, comp, upsideVal, action, actionCls,
+            _health:hs, _momentum:ms, _slope:ts,
+            group:stock?.group||'', session:stock?.session||'',
+            score:stock?.score||0, risk, slPrice, slHit};
+  });
+
+  // KPI
+  const withPnl = holdings.filter(h=>h.pnl!==null);
+  const avgPnl  = withPnl.length?(withPnl.reduce((s,h)=>s+h.pnl,0)/withPnl.length).toFixed(1):'—';
+  const profit  = holdings.filter(h=>h.pnl!==null&&h.pnl>0).length;
+  const loss    = holdings.filter(h=>h.pnl!==null&&h.pnl<0).length;
+  const slCount = holdings.filter(h=>h.slHit).length;
+  const avgUpside = holdings.length?(holdings.reduce((s,h)=>s+h.upsideVal,0)/holdings.length).toFixed(0):'—';
+
+  document.getElementById('portSummary').innerHTML=[
+    {l:'ถือทั้งหมด',    v:`${holdings.length} ตัว`, c:'var(--acc)'},
+    {l:'Avg P&L',       v:`${avgPnl}%`,              c:parseFloat(avgPnl)>=0?'var(--acc)':'var(--danger)'},
+    {l:'Avg Upside',    v:`${avgUpside}%`,            c:parseInt(avgUpside)>50?'var(--acc)':parseInt(avgUpside)>30?'var(--warn)':'var(--tp)'},
+    {l:'SL Alert',      v:slCount>0?`🔴 ${slCount} ตัว`:'✅ ปลอดภัย', c:slCount>0?'var(--danger)':'var(--acc)'},
+  ].map(k=>`<div class="port-kpi">
+    <div class="port-kpi-lbl">${k.l}</div>
+    <div class="port-kpi-val" style="color:${k.c}">${k.v}</div>
+  </div>`).join('');
+
+  // Rotation Alert — ตัวที่ควร rotate ออก
+  const rotateOut = holdings.filter(h=>h.upsideVal<30||h.slHit).sort((a,b)=>a.upsideVal-b.upsideVal);
+  const rotAlert  = document.getElementById('rotationAlert');
+  const rotBody   = document.getElementById('rotationBody');
+  if(rotateOut.length>0){
+    rotAlert.style.display='block';
+    rotBody.innerHTML = rotateOut.map(h=>`
+      <span style="color:${h.slHit?'var(--danger)':'var(--tp)'}">
+        ${h.slHit?'🔴':'🟠'} <b>${h.sym}</b>
+      </span>
+      <span style="color:var(--muted)"> Upside เหลือ </span>
+      <span style="color:${h.slHit?'var(--danger)':'var(--warn)'}; font-weight:700">${h.upsideVal}%</span>
+      <span style="color:var(--muted)"> · ${h.slHit?'ถึง SL ออกได้เลย':'พิจารณา rotate'} → หาตัวที่ upside สูงกว่า</span><br>
+    `).join('');
+  } else {
+    rotAlert.style.display='none';
+  }
+
+  // SL Alert popup
+  if(slCount>0){
+    const slHits = holdings.filter(h=>h.slHit);
+    if(!document.querySelector('.alert-overlay')){
+      const overlay=document.createElement('div');
+      overlay.className='alert-overlay';
+      const slItems = slHits.map(h=>
+        '<div class="alert-item">' +
+        '<div class="alert-sym2">'+h.sym+'</div>' +
+        '<div class="alert-change">' +
+        '<span style="color:var(--muted)">ทุน $'+h.cost.toFixed(2)+'</span>' +
+        '<span style="color:var(--muted);margin:0 6px">→</span>' +
+        '<span style="color:var(--danger);font-weight:700">$'+h.price.toFixed(2)+' ('+h.pnl+'%)</span><br>' +
+        '<span style="font-size:9px;color:var(--muted)">SL $'+h.slPrice+' · ออกแล้วหาตัวที่ upside สูงกว่า</span>' +
+        '</div></div>'
+      ).join('');
+      overlay.innerHTML=
+        '<div class="alert-box">' +
+        '<div class="alert-title">🔴 STOPLOSS! — '+slCount+' ตัว · Rotate ทุนออกหาโอกาสใหม่</div>' +
+        '<div class="alert-items">'+slItems+'</div>' +
+        '<button class="alert-close" onclick="this.closest(\'.alert-overlay\').remove()">รับทราบ · ไปดู Swap Opportunities</button>' +
+        '</div>';
+      document.body.appendChild(overlay);
+    }
+  }
+
+  // Table — เรียงตาม upside มากสุดก่อน
+  const pnlClr = v => v===null?'var(--muted)':v>=0?'var(--acc)':'var(--danger)';
+  document.getElementById('portBody').innerHTML = holdings.length===0
+    ?`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่มีข้อมูลใน Sheet tab "portfolio"</td></tr>`
+    :holdings.sort((a,b)=>b.upsideVal-a.upsideVal).map(h=>{
+      const uClr = h.upsideVal>=60?'var(--acc)':h.upsideVal>=35?'var(--warn)':'var(--tp)';
+      const rowStyle = h.slHit?'background:rgba(244,67,54,.06);border-left:2px solid var(--danger);':'';
+      const slTxt = h.slPrice
+        ?`<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${h.slHit?'var(--danger)':'var(--muted)'}">
+            $${h.slPrice}
+            <div style="font-size:9px;color:${h.slHit?'var(--danger)':'#8FCFBA'}">${h.slHit?'🔴 ถึงแล้ว!':'-'+(h.risk==='LOW'?8:h.risk==='HIGH'?12:10)+'% จากทุน'}</div>
+          </div>`:'—';
+      const ts = h._slope;
+      const slopeClr = ts.slope <= -3 ? 'var(--danger)' : ts.slope <= -1 ? 'var(--warn)' : ts.slope >= 2 ? 'var(--acc)' : 'var(--muted)';
+      const trendHtml = `<div style="font-size:10px;font-family:var(--mono);color:${slopeClr};white-space:nowrap">
+        ${ts.label}
+        <div style="font-size:9px;color:var(--muted)">${ts.slope>0?'+':''}${ts.slope} pts</div>
+      </div>`;
+      return `<tr style="${rowStyle}">
+        <td><div class="port-sym">${h.sym}</div><div class="port-grp">${h.group}</div></td>
+        <td style="font-family:var(--mono)">$${h.cost.toLocaleString('en',{minimumFractionDigits:2})}</td>
+        <td style="font-family:var(--mono);color:var(--text)">$${h.price.toLocaleString('en',{minimumFractionDigits:2})}</td>
+        <td style="font-family:var(--mono);font-weight:700;color:${pnlClr(h.pnl)}">${h.pnl!==null?(h.pnl>=0?'+':'')+h.pnl+'%':'—'}</td>
+        <td style="font-family:var(--mono);font-weight:700;color:${compClr(h.comp)}">${h.comp}</td>
+        <td style="font-family:var(--mono);font-size:11px;">
+          <span style="font-weight:700;color:${h._health>=40?'var(--acc)':h._health>=0?'var(--warn)':'var(--danger)'}">
+            ${h._health>=40?'✅':'⚠️'} ${h._health}
+          </span>
+          <div style="font-size:9px;color:#8FCFBA;">${h._health>=40?'trend ดี':h._health>=0?'กลางๆ':'trend แย่'}</div>
+        </td>
+        <td style="font-family:var(--mono);font-size:11px;">
+          <span style="font-weight:700;color:${h._momentum>=30?'var(--acc)':h._momentum>=0?'var(--warn)':'var(--danger)'}">
+            ${h._momentum>=30?'📈':h._momentum>=0?'➡️':'📉'} ${h._momentum}
+          </span>
+          <div style="font-size:9px;color:#8FCFBA;">${h._momentum>=30?'ยังแรง':h._momentum>=0?'กลางๆ':'หมดแรง'}</div>
+        </td>
+        <td>${trendHtml}</td>
+        <td>
+          <div class="upside-bar">
+            <div class="upside-track"><div class="upside-fill" style="width:${Math.min(h.upsideVal,100)}%;background:${uClr}"></div></div>
+            <div class="upside-val" style="color:${uClr}">${h.upsideVal}%</div>
+          </div>
+        </td>
+        <td>${slTxt}</td>
+        <td><span class="action-tag ${h.actionCls}">${h.action}</span></td>
+      </tr>`;
+    }).join('');
+
+  // Best Swap Opportunities — top 5 ที่ upside สูงสุดในตลาด และไม่ได้ถือ
+  const portSyms = new Set(Object.keys(portMap));
+  const swapCandidates = latest
+    .filter(r=>!portSyms.has(r.symbol) && r.action==='BUY' && r.confidence==='A')
+    .sort((a,b)=>a._comp-b._comp)
+    .slice(0,5);
+
+  document.getElementById('swapBody').innerHTML = swapCandidates.length===0
+    ?`<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:10px">ยังไม่มีโอกาสใหม่ที่ดีพอ</div>`
+    :swapCandidates.map((r,i)=>{
+      const uVal = upside(r._comp);
+      const uClr = uVal>=60?'var(--acc)':uVal>=40?'var(--warn)':'var(--tp)';
+      const isTop = i===0;
+      return `<div class="swap-card ${isTop?'top':''}">
+        ${isTop?`<div class="swap-badge" style="background:rgba(0,255,178,.15);color:var(--acc);border:1px solid rgba(0,255,178,.3)">⭐ TOP PICK</div>`:''}
+        <div class="swap-sym" style="margin-top:${isTop?'6':'0'}px">${r.symbol}</div>
+        <div class="swap-grp">${r.group}</div>
+        <div class="swap-label">Upside Remaining</div>
+        <div class="swap-score" style="color:${uClr}">${uVal}%</div>
+        <div class="swap-meta">
+          ML Score: ${r._comp}/100<br>
+          RSI: ${r.rsi} · ${r.heat} · Conf ${r.confidence}<br>
+          ราคา: $${r.price.toLocaleString('en',{minimumFractionDigits:2})}
+        </div>
+      </div>`;
+    }).join('');
+}
+
+/* ============================================================ STOCK LATEST TAB */
+let slFilterAction = 'ALL';
+
+function renderStockLatest() {
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
+  latest.sort((a,b)=>b._comp-a._comp);
+
+  // KPI — นับจาก r.action ให้ตรงกับปุ่ม Filter
+  latest.forEach(r=>{ r._aiLabel = aiLabel(r); });
+  const buyCount = latest.filter(r=>r.action==='BUY').length;
+  const tpCount  = latest.filter(r=>r.action==='TAKE PROFIT').length;
+  const avgComp  = latest.length?(latest.reduce((s,r)=>s+r._comp,0)/latest.length).toFixed(1):'—';
+  const topStock = latest[0];
+  document.getElementById('slKpiRow').innerHTML=[
+    {l:'หุ้นทั้งหมด',v:latest.length,s:'ในระบบ stock_history',c:'g'},
+    {l:'BUY Signal',v:buyCount,s:'ยังมี upside',c:'b'},
+    {l:'Avg Score',v:avgComp,s:'คะแนนเฉลี่ย ML',c:'w'},
+    {l:'Top Pick',v:topStock?.symbol||'—',s:`Score: ${topStock?._comp||0}`,c:'o'},
+  ].map(k=>`<div class="kpi ${k.c}">
+    <div class="kpi-lbl">${k.l}</div>
+    <div class="kpi-val">${k.v}</div>
+    <div class="kpi-sub">${k.s}</div>
+  </div>`).join('');
+
+  // Filter buttons พร้อม count
+  const actionCounts = {};
+  latest.forEach(r=>{ actionCounts[r.action]=(actionCounts[r.action]||0)+1; });
+  const actions = ['ALL','BUY','TAKE PROFIT','WATCH'];
+  document.getElementById('slFilterBar').innerHTML = actions.map(a=>{
+    const cnt = a==='ALL' ? latest.length : (actionCounts[a]||0);
+    return `<button class="fb ${a===slFilterAction?'on':''}" onclick="setSLFilter('${a}')">${a} <span style="opacity:.65;font-size:8px">(${cnt})</span></button>`;
+  }).join('');
+
+  renderSLRows(latest);
+}
+
+function setSLFilter(a) {
+  slFilterAction = a;
+  document.querySelectorAll('#slFilterBar .fb').forEach(b=>b.classList.toggle('on',b.textContent===a));
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
+  latest.sort((a,b)=>b._comp-a._comp);
+  renderSLRows(latest);
+}
+
+function filterStockLatest() {
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
+  latest.sort((a,b)=>b._comp-a._comp);
+  renderSLRows(latest);
+}
+
+function renderSLRows(latest) {
+  const search = (document.getElementById('slSearch')?.value||'').toUpperCase().trim();
+
+  // คำนวณ aiLabel สำหรับแสดงใน column "AI แนะนำ" เท่านั้น
+  const withLabel = latest.map(r=>({ ...r, _aiLabel: typeof aiLabel === 'function' ? aiLabel(r) : r.action }));
+
+  // filter ใช้ r.action จาก Sheet ให้ตรงกับ column "Action" ที่แสดงในตาราง
+  const filtered = withLabel.filter(r=>{
+    if(slFilterAction!=='ALL') {
+      if(r.action !== slFilterAction) return false;
+    }
+    if(search && !r.symbol.includes(search) && !r.group.toUpperCase().includes(search)) return false;
+    return true;
+  });
+
+  document.getElementById('slBody').innerHTML = filtered.length===0
+    ? `<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่พบข้อมูล</td></tr>`
+    : filtered.map((r,i)=>{
+        const comp = r._comp;
+        const cClr = compClr(comp);
+        const pillBg = comp>=mlThresholds.sell?'rgba(244,67,54,.15)':comp>=mlThresholds.partial?'rgba(255,107,53,.15)':comp>=mlThresholds.buy?'rgba(255,193,7,.12)':'rgba(0,255,178,.12)';
+        const pillBrd = comp>=mlThresholds.sell?'rgba(244,67,54,.4)':comp>=mlThresholds.partial?'rgba(255,107,53,.4)':comp>=mlThresholds.buy?'rgba(255,193,7,.35)':'rgba(0,255,178,.4)';
+        const rsiColor = rsiClr(r.rsi);
+        const hColor = heatClr(r.heat);
+        const slKey = actualKey(r);
+        // default: ถ้ายังไม่เคยเลือก → หุ้นใน port = "ถือ", นอก port = "ไม่สนใจ"
+        if(!actualActionMap[slKey] || actualActionMap[slKey]==='—') {
+          actualActionMap[slKey] = portMap[r.symbol] ? 'ถือ' : 'ไม่สนใจ';
+        }
+        const slOpts = ACTUAL_ACTIONS.map(a=>`<option value="${a}" ${(actualActionMap[slKey])===a?'selected':''}>${a}</option>`).join('');
+        const ts = trendSlope(r.symbol, Math.max(...filtered.map(x=>x.pct_ema50),1));
+        const tsClr = ts.slope<=-3?'var(--danger)':ts.slope<=-1?'var(--warn)':ts.slope>=2?'var(--acc)':'var(--muted)';
+        const hs = healthScore(r, ts.slope);
+        const hsClr = hs>=40?'var(--acc)':hs>=0?'var(--warn)':'var(--danger)';
+        const hsTxt = hs>=40?'✅':'⚠️';
+        return `<tr>
+          <td style="font-family:var(--mono);color:var(--muted);font-size:11px">${i+1}</td>
+          <td><div class="sl-sym">${r.symbol}</div><div class="sl-grp">${r.group}</div></td>
+          <td style="font-family:var(--mono);font-size:10px;color:#8FCFBA">${r.date}<br><span style="color:var(--muted);font-size:9px">${r.session}</span></td>
+          <td style="font-family:var(--mono);font-weight:700;color:var(--text)">$${r.price.toLocaleString('en',{minimumFractionDigits:2})}</td>
+          <td>${aiLabelPill(r._aiLabel)}</td>
+          <td style="font-family:var(--mono);font-weight:700;color:${rsiColor}">${r.rsi}</td>
+          <td><span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${hColor}">${r.heat}</span></td>
+          <td style="font-family:var(--mono);font-size:10px;color:${r.risk==='LOW'?'var(--acc)':r.risk==='MEDIUM'?'var(--warn)':'var(--danger)'}">${r.risk}</td>
+          <td style="font-family:var(--mono);font-weight:700;color:${cClr}">${comp}</td>
+          <td style="font-family:var(--mono);font-size:10px;color:${hsClr}">${hsTxt} ${hs}<div style="font-size:9px;color:var(--muted)">${hs>=40?'trend ดี':hs>=0?'กลางๆ':'trend แย่'}</div></td>
+          <td style="font-size:10px;color:${tsClr};white-space:nowrap">${ts.label}<div style="font-size:9px;color:var(--muted)">${ts.slope>0?'+':''}${ts.slope} pts</div></td>
+          <td><select onchange="setActualAction('${slKey}',this.value)" style="font-family:var(--mono);font-size:10px;padding:4px 8px;background:#1a1a2e;border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:3px;outline:none;cursor:pointer;">${slOpts}</select></td>
+          <td>
+            <span class="score-pill" style="background:${pillBg};border-color:${pillBrd};color:${cClr}">
+              ${comp}
+            </span>
+          </td>
+        </tr>`;
+      }).join('');
+}
+
+// AI Label pill สำหรับแสดงใน column
+function aiLabelPill(label) {
+  if(!label) return '<span style="color:var(--muted);font-size:10px">—</span>';
+  const map = {
+    'STRONG BUY': { bg:'rgba(0,255,178,.15)', clr:'var(--acc)',    brd:'rgba(0,255,178,.4)',  txt:'⚡ STRONG BUY' },
+    'BUY':        { bg:'rgba(0,255,178,.08)', clr:'var(--acc)',    brd:'rgba(0,255,178,.3)',  txt:'✅ BUY' },
+    'WATCH':      { bg:'rgba(255,193,7,.10)', clr:'var(--warn)',   brd:'rgba(255,193,7,.35)', txt:'👁 WATCH' },
+    'SELL':       { bg:'rgba(255,107,53,.15)',clr:'var(--tp)',     brd:'rgba(255,107,53,.4)', txt:'⚠️ SELL' },
+    'STOPLOSS':   { bg:'rgba(244,67,54,.15)', clr:'var(--danger)', brd:'rgba(244,67,54,.4)',  txt:'🔴 STOPLOSS' },
+  };
+  const s = map[label] || { bg:'rgba(255,255,255,.05)', clr:'var(--muted)', brd:'rgba(255,255,255,.1)', txt:label };
+  return `<span style="font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 8px;border-radius:3px;background:${s.bg};color:${s.clr};border:1px solid ${s.brd};white-space:nowrap">${s.txt}</span>`;
+}
+
+// AI auto-recommend column
+function aiRecommend(r) {
+  const comp = r._comp;
+  const pct = r.pct_ema50;
+  const mom = r.ema50>0?(r.ema20-r.ema50)/r.ema50*100:0;
+
+  // Strong BUY conditions
+  if(r.action==='BUY' && r.score>=7 && r.confidence==='A' && r.rsi<65 && r.heat==='COOL' && r.risk==='LOW' && comp<mlThresholds.partial) {
+    return `<span class="ai-tag strong">⚡ STRONG BUY</span>`;
+  }
+  // Take Profit / Sell signal
+  if(comp>=mlThresholds.sell || (r.action==='TAKE PROFIT' && r.rsi>=75)) {
+    return `<span class="ai-tag tp">🔴 ขายได้เลย</span>`;
+  }
+  // Partial sell
+  if(comp>=mlThresholds.partial || (r.rsi>=70 && r.heat==='EXTREME')) {
+    return `<span class="ai-tag tp">🟠 ขายบางส่วน</span>`;
+  }
+  // Good BUY
+  if(r.action==='BUY' && r.confidence==='A' && comp<mlThresholds.buy) {
+    return `<span class="ai-tag buy">🟢 ซื้อได้</span>`;
+  }
+  // Watch / wait
+  if(r.rsi>=65 || r.heat==='HOT' || comp>=mlThresholds.buy) {
+    return `<span class="ai-tag watch">👁️ รอก่อน</span>`;
+  }
+  // Default BUY
+  if(r.action==='BUY') {
+    return `<span class="ai-tag buy">🟢 ซื้อได้</span>`;
+  }
+  return `<span class="ai-tag watch">👁️ ติดตาม</span>`;
+}
+
+/* ============================================================ SCORE CHART (Summary tab) */
+function renderScoreChart() {
+  const sumRows = parseSummaryRows();
+  if(sumRows.length === 0) {
+    document.getElementById('scoreChartBody').innerHTML =
+      `<div style="font-family:var(--mono);font-size:10px;color:var(--muted)">ไม่มีข้อมูลใน summary sheet</div>`;
+    return;
+  }
+  // Get current comp scores
+  const latest = getLatest();
+  const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
+  const latestMap = {};
+  latest.forEach(r=>{ r._comp=composite(r,maxPct); latestMap[r.symbol]=r; });
+
+  // Group by actual_action (ถ้ามี) ไม่งั้น fallback action
+  const normActualChart = v => {
+    if(!v||v==='—'||v==='ไม่สนใจ') return null;
+    const m = {
+      'ซื้อ':'BUY','ซื้อเพิ่ม':'BUY',
+      'ขาย':'TAKE PROFIT','ขายหมด':'TAKE PROFIT','ขายบางส่วน':'PARTIAL SELL',
+      'ถือ':'WATCH','ถือต่อ':'WATCH'
+    };
+    return m[v] || v.toUpperCase();
+  };
+  const actionGroups = {};
+  sumRows.forEach(r=>{
+    const a = normActualChart(r.actual_action) || r.action || 'OTHER';
+    if(!actionGroups[a]) actionGroups[a]=[];
+    actionGroups[a].push(r);
+  });
+
+  const actionOrder = ['BUY','TAKE PROFIT','PARTIAL SELL','WATCH'];
+  const actionColors = {
+    'BUY':'var(--acc)',
+    'TAKE PROFIT':'var(--tp)',
+    'PARTIAL SELL':'var(--warn)',
+    'WATCH':'var(--acc2)',
+  };
+
+  const html = actionOrder
+    .filter(a=>actionGroups[a]?.length>0)
+    .map(a=>{
+      const rows = actionGroups[a];
+      const clr = actionColors[a]||'var(--muted)';
+      const dots = rows.sort((x,y)=>y.date.localeCompare(x.date)).map(r=>{
+        // ใช้ composite_score ณ วันที่ trade จริง (จาก export CSV → summary sheet)
+        // fallback ไป latestMap ถ้า summary เก่ายังไม่มีค่านี้
+        const sc = r.composite_score ?? latestMap[r.symbol]?._comp ?? null;
+        if(sc===null) return '';
+        const scClr = compClr(sc);
+
+        // กรอบ (border) = ML Zone ณ ตอนที่ trade
+        const zoneColor = sc >= mlThresholds.sell    ? 'rgba(244,67,54,.9)'   // SELL zone — แดง
+                        : sc >= mlThresholds.partial  ? 'rgba(255,107,53,.9)'  // PARTIAL SELL — ส้ม
+                        : sc >= mlThresholds.buy      ? 'rgba(255,193,7,.9)'   // HOLD zone — เหลือง
+                        :                               'rgba(0,255,178,.9)';   // BUY zone — เขียว
+        const zoneLabel = sc >= mlThresholds.sell    ? 'SELL ZONE'
+                        : sc >= mlThresholds.partial  ? 'PARTIAL ZONE'
+                        : sc >= mlThresholds.buy      ? 'HOLD ZONE'
+                        :                               'BUY ZONE';
+
+        // พื้นหลัง = WIN/LOSS/PENDING
+        const bg = r.outcome==='WIN'    ? 'rgba(41,182,246,.22)'   // WIN — ฟ้า
+                 : r.outcome==='LOSS'   ? 'rgba(244,67,54,.22)'    // LOSS — แดง
+                 :                        'rgba(255,255,255,.06)';  // PENDING — เทา
+
+        // glow ตาม WIN/LOSS
+        const glow = r.outcome==='WIN'  ? 'box-shadow:0 0 6px rgba(41,182,246,.5);'
+                   : r.outcome==='LOSS' ? 'box-shadow:0 0 6px rgba(244,67,54,.4);'
+                   : '';
+
+        const outcomeIcon = r.outcome==='WIN'  ? '✅'
+                          : r.outcome==='LOSS' ? '❌'
+                          : '⏳';
+
+        return `<div class="sc-dot" style="background:${bg};border:2px solid ${zoneColor};color:${scClr};${glow};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1.1;"
+          title="${r.symbol} · Score:${sc} · ${zoneLabel} · ${r.outcome||'PENDING'} · ${r.date}">
+          <span style="font-size:9px;">${outcomeIcon}</span>
+          <span>${sc}</span>
+        </div>`;
+      }).join('');
+
+      const avgSc = rows.map(r => r.composite_score ?? latestMap[r.symbol]?._comp).filter(v=>v!=null);
+      const avg = avgSc.length?(avgSc.reduce((s,v)=>s+v,0)/avgSc.length).toFixed(1):'—';
+      return `<div class="sc-action-row">
+        <div class="sc-action-label" style="color:${clr}">
+          ${a} <span style="font-size:9px;color:var(--muted);font-weight:400">(${rows.length} trades · avg score: ${avg})</span>
+        </div>
+        <div class="sc-points">${dots||`<span style="font-family:var(--mono);font-size:9px;color:var(--muted)">ยังไม่มีคะแนนปัจจุบัน</span>`}</div>
+      </div>`;
+    }).join('');
+
+  // ===== Zone Accuracy Summary =====
+  // นับ WIN/LOSS แยกตาม ML Zone ของ score ณ ตอนนั้น (จาก sumRows ทั้งหมด)
+  const zones = [
+    { label:'BUY ZONE',     color:'rgba(0,255,178,.9)',   check: sc => sc < mlThresholds.buy },
+    { label:'HOLD ZONE',    color:'rgba(255,193,7,.9)',   check: sc => sc >= mlThresholds.buy && sc < mlThresholds.partial },
+    { label:'PARTIAL ZONE', color:'rgba(255,107,53,.9)',  check: sc => sc >= mlThresholds.partial && sc < mlThresholds.sell },
+    { label:'SELL ZONE',    color:'rgba(244,67,54,.9)',   check: sc => sc >= mlThresholds.sell },
+  ];
+  const zoneStats = zones.map(z => {
+    const zRows = sumRows.filter(r => {
+      // ไม่นับ daily log (WATCH ที่ไม่มี pnl_pct) และ PENDING
+      if(r.pnl_pct === null) return false;
+      if(r.outcome === 'PENDING' || r.outcome === 'HOLD') return false;
+      const sc = (r.composite_score > 1 ? r.composite_score : latestMap[r.symbol]?._comp) ?? null;
+      return sc !== null && z.check(sc);
+    });
+    const win  = zRows.filter(r => r.outcome === 'WIN').length;
+    const loss = zRows.filter(r => r.outcome === 'LOSS').length;
+    const total = win + loss; // เฉพาะที่มีผลแล้ว (ไม่นับ PENDING)
+    const pct = total > 0 ? (win / total * 100).toFixed(1) : null;
+    const accColor = pct === null ? 'var(--muted)'
+                   : parseFloat(pct) >= 60 ? '#4ade80'
+                   : parseFloat(pct) >= 45 ? '#facc15'
+                   : '#f87171';
+    return { ...z, win, loss, total, pct, accColor };
+  });
+
+  const summaryHtml = `
+    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;padding:10px 12px;background:rgba(255,255,255,.03);border-radius:6px;border:1px solid rgba(255,255,255,.08);">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;width:100%;margin-bottom:4px;">
+        📊 Zone Accuracy (WIN / WIN+LOSS, ไม่นับ PENDING)
+      </div>
+      ${zoneStats.map(z => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(255,255,255,.04);border-radius:4px;border-left:3px solid ${z.color};">
+          <div style="font-family:var(--mono);font-size:9px;color:${z.color};font-weight:700;min-width:90px;">${z.label}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);">✅${z.win} ❌${z.loss}</div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${z.accColor};min-width:50px;">
+            ${z.pct !== null ? z.pct + '%' : '—'}
+          </div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);">(n=${z.total})</div>
+        </div>
+      `).join('')}
+    </div>`;
+
+  document.getElementById('scoreChartBody').innerHTML = (summaryHtml + html) ||
+    `<div style="font-family:var(--mono);font-size:10px;color:var(--muted)">ไม่มีข้อมูลเพียงพอ</div>`;
+}
+
+/* ============================================================ AI LABEL (global — ใช้ทั้ง filter, KPI, export) */
+function aiLabel(r) {
+  if(!r||r._comp===undefined) return 'WATCH';
+  const c = r._comp;
+  const hs = healthScore(r);
+  const ms = momentumScore(r);
+  // STOPLOSS
+  const costPrice = portMap[r.symbol]||null;
+  if(costPrice) {
+    const slPctVal = r.risk==='LOW'?0.08:r.risk==='HIGH'?0.12:0.10;
+    const slPrice  = costPrice*(1-slPctVal);
+    if(r.price<=slPrice) return 'STOPLOSS';
+  }
+  // STRONG BUY
+  if(r.action==='BUY'&&r.score>=7&&r.confidence==='A'&&r.rsi<65&&r.heat==='COOL'&&r.risk==='LOW'&&hs>=40&&c<mlThresholds.partial) return 'STRONG BUY';
+  // SELL
+  if(c>=mlThresholds.sell||(r.action==='TAKE PROFIT'&&r.rsi>=75)) return 'SELL';
+  // PARTIAL SELL
+  if(c>=mlThresholds.partial||(r.rsi>=70&&r.heat==='EXTREME')||(ms<0&&c>=mlThresholds.buy)) return 'PARTIAL SELL';
+  // BUY
+  if(r.confidence==='A'&&c<mlThresholds.buy&&hs>=40&&r.rsi<65) return 'BUY';
+  if(r.action==='BUY'&&hs>=0) return 'BUY';
+  return 'WATCH';
+}
+
+/* ============================================================ EXPORT STOCK LATEST → SUMMARY CSV */
+function exportStockLatestCSV(mode) {
+  const latest = getLatest();
+  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
+  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
+  latest.sort((a,b)=>b._comp-a._comp);
+
+  const search = (document.getElementById('slSearch')?.value||'').toUpperCase().trim();
+  let filtered = latest.filter(r=>{
+    if(slFilterAction!=='ALL' && r.action!==slFilterAction) return false;
+    if(search && !r.symbol.includes(search) && !r.group.toUpperCase().includes(search)) return false;
+    return true;
+  });
+  if(filtered.length===0){ alert('ไม่มีข้อมูลที่จะ export ครับ'); return; }
+
+  // ตัดหุ้นที่ actual_action = "ไม่สนใจ" ออกก่อน export เสมอ
+  const beforeSkip = filtered.length;
+  filtered = filtered.filter(r => {
+    const key = actualKey(r);
+    const act = actualActionMap[key] || '—';
+    return act !== 'ไม่สนใจ';
+  });
+  if(filtered.length === 0){
+    alert(`ไม่มีรายการที่จะ export ครับ (${beforeSkip} รายการถูกตั้งเป็น "ไม่สนใจ" ทั้งหมด)`);
+    return;
+  }
+
+  // mode='new' → กรองเฉพาะรายการที่ยังไม่มีใน summary sheet
+  if(mode==='new') {
+    const sumRows = parseSummaryRows();
+    // สร้าง set ของ key ที่มีใน summary แล้ว (date+symbol+session)
+    const existingKeys = new Set(sumRows.map(r=>`${r.date}_${r.symbol}_${r.session||''}`));
+    const before = filtered.length;
+    filtered = filtered.filter(r=>{
+      const k = `${r.date}_${r.symbol}_${r.session||''}`;
+      return !existingKeys.has(k);
+    });
+    if(filtered.length===0){
+      alert(`ไม่มีรายการใหม่ครับ (${before} รายการมีใน summary แล้วทั้งหมด)`);
+      return;
+    }
+  }
+
+  // ใช้ global portMap (populate โดย renderPortfolio แล้ว)
+  // rebuild เฉพาะกรณี portMap ว่างเปล่า (เช่น portfolio tab ยังไม่ได้ render)
+  const localPortMap = Object.keys(portMap).length > 0 ? portMap : (() => {
+    const m = {};
+    if(portfolioRows && portfolioRows.length > 1) {
+      const hdr = portfolioRows[0].map(h=>(h||'').toLowerCase().trim());
+      const symIdx  = hdr.findIndex(h=>h.includes('symbol'));
+      const costIdx = hdr.findIndex(h=>h.includes('cost')||h.includes('avg')||h.includes('ราคาทุน')||h.includes('price'));
+      portfolioRows.slice(1).forEach(row=>{
+        const sym  = (row[symIdx]||'').toUpperCase().trim();
+        const cost = parseFloat(row[costIdx]);
+        if(sym && !isNaN(cost)) m[sym] = cost;
+      });
+    }
+    return m;
+  })();
+
+  // SL % ตาม Risk level
+  const slPct = risk => risk==='LOW'?0.08:risk==='HIGH'?0.12:0.10;
+
+  const toThai = a => {
+    if(a==='BUY')          return 'ซื้อเพิ่ม';
+    if(a==='TAKE PROFIT')  return 'ขายหมด';
+    if(a==='PARTIAL SELL') return 'ขายบางส่วน';
+    if(a==='WATCH')        return 'ถือต่อ';
+    if(a==='STOPLOSS')     return 'STOPLOSS';
+    return a;
+  };
+
+  // format เดิม 12 cols (Sheet รับได้) + 3 cols ใหม่ต่อท้าย (optional)
+  // date,time,session,symbol,group,action_recommended,actual_action,score,price,cost_price,pnl_pct,category,notes
+  // + composite_score,health_score,momentum_score
+  const headers = [
+    'date','time','session','symbol','group',
+    'action_recommended','actual_action','score','price','cost_price','pnl_pct',
+    'category','notes',
+    'composite_score','health_score','momentum_score'
+  ];
+
+  const csvRows = [
+    headers.join(','),
+    ...filtered.map(r=>{
+      const costPrice = localPortMap[r.symbol] || null;
+      const isInPort  = costPrice !== null;
+      const isSell    = r.action === 'TAKE PROFIT';
+
+      // เช็ค STOPLOSS
+      const slPrice = isInPort ? costPrice*(1-slPct(r.risk||'MEDIUM')) : null;
+      const isSlHit = slPrice!==null && r.price<=slPrice;
+      const effectiveAction = isSlHit ? 'STOPLOSS' : r.action;
+
+      let cost   = '';
+      const pnlPct = '';
+
+      if(isInPort && (!isSell || isSlHit)) {
+        cost   = costPrice.toFixed(2);
+      }
+
+      const hs = healthScore(r);
+      const ms = momentumScore(r);
+      const al = aiLabel(r);
+
+      // actual_action จาก dropdown (ถ้าเลือกไว้)
+      const slKey = actualKey(r);
+      const actualAct = (actualActionMap[slKey] && actualActionMap[slKey]!=='—') ? actualActionMap[slKey] : '';
+
+      return [
+        r.date,
+        r.time||'',
+        r.session||'',
+        r.symbol,
+        (r.group||'').replace(/,/g,' '),
+        toThai(effectiveAction),   // col 6: action_recommended (Thai)
+        actualAct,                 // col 7: actual_action (ทำจริง)
+        r.score,
+        r.price.toFixed(2),
+        cost,
+        pnlPct,
+        al,                        // col 12: category = aiLabel
+        r._comp,                   // col 13: notes = composite score
+        r._comp,                   // col 14: composite_score
+        hs,                        // col 15: health_score
+        ms                         // col 16: momentum_score
+      ].join(',');
+    })
+  ];
+
+    // Save ลง Supabase trade_journal แทน download CSV
+  const today = new Date().toISOString().slice(0,10);
+
+  // โหลด symbol map
+  const symRes  = await fetch(`${SUPABASE_URL}/rest/v1/symbols?select=id,symbol&is_active=eq.true`, { headers: sb._hdr() });
+  const symData = await symRes.json();
+  const symMap2 = {};
+  (Array.isArray(symData)?symData:[]).forEach(s=>{ symMap2[s.symbol]=s.id; });
+
+  // โหลด portfolio FK map
+  const pRes  = await fetch(`${SUPABASE_URL}/rest/v1/portfolio?select=id,symbols(symbol)&is_active=eq.true`, { headers: sb._hdr() });
+  const pData = await pRes.json();
+  const portFKMap = {};
+  (Array.isArray(pData)?pData:[]).forEach(p=>{ if(p.symbols?.symbol) portFKMap[p.symbols.symbol]=p.id; });
+
+  const rows2 = filtered.map(r => {
+    const costPrice = localPortMap[r.symbol]||null;
+    const isInPort  = costPrice!==null;
+    const slPrice   = isInPort ? costPrice*(1-slPct(r.risk||'MEDIUM')) : null;
+    const isSlHit   = slPrice!==null && r.price<=slPrice;
+    const effectiveAction = isSlHit ? 'STOPLOSS' : r.action;
+    const hs = healthScore(r);
+    const ms = momentumScore(r);
+    const al = aiLabel(r);
+    const slKey    = actualKey(r);
+    const actualAct = (actualActionMap[slKey]&&actualActionMap[slKey]!=='—') ? actualActionMap[slKey] : '';
+    const symId    = symMap2[r.symbol];
+    if(!symId) return null;
+    return {
+      symbol_id:          symId,
+      portfolio_id:       portFKMap[r.symbol]||null,
+      trade_date:         r.date||today,
+      session:            r.session||null,
+      action_recommended: toThai(effectiveAction),
+      actual_action:      actualAct,
+      score:              r.score||0,
+      price:              parseFloat(r.price)||0,
+      cost_price:         isInPort ? parseFloat(costPrice) : null,
+      pnl_pct:            null,
+      category:           al||null,
+      composite_score:    r._comp||null,
+      health_score:       hs||null,
+      momentum_score:     ms||null,
+    };
+  }).filter(Boolean);
+
+  if(rows2.length===0){ alert('ไม่มีข้อมูลที่จะบันทึกครับ'); return; }
+
+  try {
+    const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/trade_journal`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify(rows2),
+    });
+    if(saveRes.ok) {
+      alert(`บันทึก ${rows2.length} รายการลง Supabase สำเร็จครับ`);
+    } else {
+      const err = await saveRes.json();
+      alert('บันทึกไม่สำเร็จ: '+(err.message||JSON.stringify(err)));
+    }
+  } catch(e) {
+    alert('Error: '+e.message);
+  }
+}
+
+const FALLBACK_CSV = `date,time,session,group,symbol,signal,trend,action,rsi,heat,confidence,smartRank,volume,risk,score,price,ema20,ema50
+2026-05-28,04:28:56,PREMARKET,AI & Semi,TSM,BUY,UP,BUY,62.1,COOL,A,8,HIGH,LOW,8,412.32,408.85,404.95
+2026-05-28,04:25:33,PREMARKET,Growth,OKLO,BUY,UP,BUY,57.5,COOL,A,7,LOW,LOW,7,68.70,67.09,65.54
+2026-05-28,04:28:57,PREMARKET,Space,ONDS,BUY,UP,BUY,60.1,COOL,A,7,LOW,LOW,7,9.77,9.58,9.52
+2026-05-28,04:22:11,PREMARKET,AI & Semi,NVDA,BUY,UP,BUY,58.8,COOL,A,8,HIGH,LOW,8,1087.50,1072.30,1055.20
+2026-05-28,04:30:01,PREMARKET,Crypto,COIN,BUY,UP,BUY,55.2,COOL,A,7,MEDIUM,LOW,7,224.80,220.10,215.40
+2026-05-28,04:18:44,PREMARKET,EV,RIVN,BUY,UP,BUY,52.3,COOL,B,6,LOW,MEDIUM,6,14.22,13.98,13.75
+2026-05-28,04:15:30,PREMARKET,Biotech,MRNA,WATCH,UP,WATCH,64.7,HOT,B,5,LOW,MEDIUM,5,68.40,67.20,65.80
+2026-05-28,04:20:55,PREMARKET,AI & Semi,AMD,BUY,UP,BUY,60.4,HOT,A,7,HIGH,LOW,7,162.75,159.30,155.60
+2026-05-28,04:24:10,PREMARKET,Cloud,SNOW,WATCH,UP,WATCH,66.9,HOT,B,5,MEDIUM,MEDIUM,5,178.20,175.40,171.90
+2026-05-28,04:31:05,PREMARKET,Growth,PLTR,BUY,UP,BUY,59.0,COOL,A,7,MEDIUM,LOW,7,24.85,24.30,23.70
+2026-05-28,21:48:20,CLOSE,Growth,NVTS,TAKE PROFIT,UP,TAKE PROFIT,87.5,EXTREME,B,6,LOW,LOW,6,32.60,27.54,24.26
+2026-05-28,21:52:33,CLOSE,AI & Semi,SMCI,TAKE PROFIT,UP,TAKE PROFIT,84.2,EXTREME,A,7,HIGH,LOW,7,865.40,821.30,778.50
+2026-05-28,21:55:01,CLOSE,Biotech,RXRX,TAKE PROFIT,UP,TAKE PROFIT,82.8,EXTREME,B,5,LOW,LOW,5,8.94,7.82,6.95
+2026-05-27,04:10:22,PREMARKET,AI & Semi,TSM,BUY,UP,BUY,56.4,COOL,A,8,HIGH,LOW,8,398.10,395.20,391.80
+2026-05-27,04:12:44,PREMARKET,Growth,OKLO,BUY,UP,BUY,53.8,COOL,A,7,LOW,LOW,7,65.30,64.10,62.80
+2026-05-27,04:14:15,PREMARKET,AI & Semi,NVDA,BUY,UP,BUY,55.2,COOL,A,8,HIGH,LOW,8,1052.40,1038.70,1024.50
+2026-05-27,04:18:30,PREMARKET,EV,TSLA,WATCH,UP,WATCH,68.1,HOT,B,5,MEDIUM,MEDIUM,5,182.40,179.20,175.60
+2026-05-26,04:08:11,PREMARKET,AI & Semi,TSM,WATCH,UP,WATCH,70.2,HOT,B,6,HIGH,MEDIUM,6,385.50,383.20,379.80
+2026-05-26,04:11:33,PREMARKET,Growth,PLTR,BUY,UP,BUY,54.6,COOL,A,7,MEDIUM,LOW,7,22.40,21.90,21.30`;
+
+/* --- FALLBACK SUMMARY (test data — WIN/LOSS จาก trade จริง) --- */
+const FALLBACK_SUMMARY = [
+  ['date','time','session','symbol','group','action_recommended','score','price','cost_price','pnl_pct','category','notes'],
+  ['2026-05-26','04:08:11','PREMARKET','TSM','AI & Semi','ซื้อเพิ่ม','6','385.50','380.00','1.45','BUY','42'],
+  ['2026-05-26','04:11:33','PREMARKET','PLTR','Growth','ซื้อเพิ่ม','7','22.40','21.00','6.67','BUY','38'],
+  ['2026-05-27','04:12:44','PREMARKET','OKLO','Growth','ซื้อเพิ่ม','7','65.30','62.00','5.32','BUY','55'],
+  ['2026-05-27','04:14:15','PREMARKET','NVDA','AI & Semi','ซื้อเพิ่ม','8','1052.40','1020.00','3.18','STRONG BUY','61'],
+  ['2026-05-27','04:18:30','PREMARKET','TSLA','EV','ถือต่อ','5','182.40','190.00','-3.89','WATCH','44'],
+  ['2026-05-28','04:25:33','PREMARKET','OKLO','Growth','ซื้อเพิ่ม','7','68.70','62.00','10.81','STRONG BUY','63'],
+  ['2026-05-28','04:22:11','PREMARKET','NVDA','AI & Semi','ซื้อเพิ่ม','8','1087.50','1020.00','6.62','STRONG BUY','66'],
+  ['2026-05-28','04:30:01','PREMARKET','COIN','Crypto','ซื้อเพิ่ม','7','224.80','230.00','-2.26','BUY','48'],
+  ['2026-05-28','04:18:44','PREMARKET','RIVN','EV','ถือต่อ','6','14.22','15.50','-8.26','WATCH','28'],
+  ['2026-05-28','21:48:20','CLOSE','NVTS','Growth','ขายหมด','6','32.60','24.00','35.83','SELL','78'],
+  ['2026-05-28','21:52:33','CLOSE','SMCI','AI & Semi','ขายหมด','7','865.40','720.00','20.19','SELL','82'],
+  ['2026-05-28','21:55:01','CLOSE','RXRX','Biotech','ขายบางส่วน','5','8.94','7.20','24.17','PARTIAL SELL','71'],
+];
+
+/* ============================================================ INIT */
+loadFromSheet();
+function tick(){
+  const n=new Date();
+  document.getElementById('clk').textContent=n.toISOString().replace('T',' ').slice(0,19)+' UTC';
+}
+tick(); setInterval(tick,1000);
+</script>
+</body>
+</html>
