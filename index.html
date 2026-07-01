@@ -935,16 +935,20 @@ async function loadFromSheet() {
 
     const [resSignals, resPort, resSum] = await Promise.all([
       // stock_signals 30 วันล่าสุด join symbols
-      (await sb.from('stock_signals'))
-        .select('signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))')
-        ._filters.push(`signal_date=gte.${cutoffStr}`) && null ||
-      fetch(`${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc`, { headers: sb._hdr() }),
-
+      fetch(
+        `${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc`,
+        { headers: sb._hdr() }
+      ),
       // portfolio ที่ active
-      fetch(`${SUPABASE_URL}/rest/v1/portfolio?select=avg_cost,is_active,symbols(symbol)&is_active=eq.true`, { headers: sb._hdr() }),
-
+      fetch(
+        `${SUPABASE_URL}/rest/v1/portfolio?select=avg_cost,is_active,symbols(symbol)&is_active=eq.true`,
+        { headers: sb._hdr() }
+      ),
       // trade_journal 90 วันล่าสุด
-      fetch(`${SUPABASE_URL}/rest/v1/trade_journal?select=trade_date,session,action_recommended,actual_action,score,price,cost_price,pnl_pct,category,composite_score,health_score,momentum_score,symbols(symbol,groups(name))&trade_date=gte.${new Date(Date.now()-90*864e5).toISOString().slice(0,10)}&order=trade_date.desc`, { headers: sb._hdr() }),
+      fetch(
+        `${SUPABASE_URL}/rest/v1/trade_journal?select=trade_date,session,action_recommended,actual_action,score,price,cost_price,pnl_pct,category,composite_score,health_score,momentum_score,symbols(symbol,groups(name))&trade_date=gte.${new Date(Date.now()-90*864e5).toISOString().slice(0,10)}&order=trade_date.desc`,
+        { headers: sb._hdr() }
+      ),
     ]);
 
     // parse stock_signals → allRows format
