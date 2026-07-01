@@ -458,6 +458,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
         <th>Upside</th>
         <th>SL Price</th>
         <th>Action</th>
+        <th>ซื้อ/ขาย</th>
       </tr></thead>
       <tbody id="portBody"></tbody>
     </table>
@@ -798,7 +799,9 @@ let allRows = [];
 let portfolioRows = [];
 let summaryRows = [];
 let prevLatestActions = {};
-let portMap = {}; // global portfolio map: symbol → cost_price
+let portMap    = {}; // global portfolio map: symbol → cost_price
+let symMapB    = {}; // backend: symbol → uuid id (FK Supabase)
+let portIdMap  = {}; // backend: symbol → portfolio_id (Supabase)
 let filterNow = 'ALL';
 let symFilterNowTl = 'ALL';
 const SESSION_ORDER = {PREMARKET:0,OPEN:1,MIDDAY:2,CLOSE:3};
@@ -1021,6 +1024,22 @@ async function loadFromSheet() {
     allRows       = newRows;
     portfolioRows = newPortRows;
     summaryRows   = newSumRows;
+
+    // populate symMapB + portIdMap สำหรับ buy/sell functions
+    try {
+      const symData  = await fetch(`${SUPABASE_URL}/rest/v1/symbols?select=id,symbol&is_active=eq.true`, { headers: sb._hdr() });
+      const symArr   = await symData.json();
+      symMapB = {};
+      (Array.isArray(symArr)?symArr:[]).forEach(s=>{ symMapB[s.symbol]=s.id; });
+
+      const portData = await fetch(`${SUPABASE_URL}/rest/v1/portfolio?select=id,symbols(symbol)&is_active=eq.true`, { headers: sb._hdr() });
+      const portArr  = await portData.json();
+      portIdMap = {};
+      (Array.isArray(portArr)?portArr:[]).forEach(p=>{ if(p.symbols?.symbol) portIdMap[p.symbols.symbol]=p.id; });
+      console.log(`✅ symMapB: ${Object.keys(symMapB).length} symbols, portIdMap: ${Object.keys(portIdMap).length} positions`);
+    } catch(e) {
+      console.warn('[loadFromSheet] symMapB/portIdMap load failed:', e);
+    }
 
     clearInterval(t);
     document.getElementById('sheetStatus').className  = 'status-val ok';
@@ -2820,7 +2839,7 @@ function renderPortfolio() {
   // Table — เรียงตาม upside มากสุดก่อน
   const pnlClr = v => v===null?'var(--muted)':v>=0?'var(--acc)':'var(--danger)';
   document.getElementById('portBody').innerHTML = holdings.length===0
-    ?`<tr><td colspan="11" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่มีข้อมูลใน Sheet tab "portfolio"</td></tr>`
+    ?`<tr><td colspan="12" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่มีข้อมูลใน Portfolio</td></tr>`
     :holdings.sort((a,b)=>b.upsideVal-a.upsideVal).map(h=>{
       const uClr = h.upsideVal>=60?'var(--acc)':h.upsideVal>=35?'var(--warn)':'var(--tp)';
       const rowStyle = h.slHit?'background:rgba(244,67,54,.06);border-left:2px solid var(--danger);':'';
@@ -2862,6 +2881,16 @@ function renderPortfolio() {
         </td>
         <td>${slTxt}</td>
         <td><span class="action-tag ${h.actionCls}">${h.action}</span></td>
+      <td style="text-align:center;white-space:nowrap;">
+        <button onclick="buyPortfolio('${h.sym}',${h.price})"
+          style="background:#16a34a;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:1px;margin-bottom:3px;display:block;width:100%">
+          🟢 BUY ADD
+        </button>
+        <button onclick="sellPortfolio('${h.sym}',${h.price})"
+          style="background:#dc2626;color:#fff;border:none;border-radius:5px;padding:3px 8px;font-size:9px;font-weight:700;cursor:pointer;letter-spacing:1px;display:block;width:100%">
+          🔴 SELL
+        </button>
+      </td>
       </tr>`;
     }).join('');
 
@@ -2891,6 +2920,133 @@ function renderPortfolio() {
         </div>
       </div>`;
     }).join('');
+}
+
+/* ============================================================ BUY / SELL PORTFOLIO */
+async function buyPortfolio(symbol, currentPrice) {
+  const priceInput = prompt(`ซื้อเพิ่ม ${symbol}
+ราคาทุนปัจจุบัน: $${(portMap[symbol]||0).toFixed(2)}
+กรอกราคาที่ซื้อจริงครับ:`, currentPrice);
+  if(!priceInput) return;
+  const price = parseFloat(priceInput);
+  if(isNaN(price) || price <= 0) { alert('ราคาไม่ถูกต้องครับ'); return; }
+
+  const symbolId = symMapB[symbol];
+  if(!symbolId) { alert(`ไม่พบ ${symbol} ใน Supabase ครับ`); return; }
+
+  try {
+    // upsert portfolio ผ่าน RPC — avg_cost คำนวณอัตโนมัติ
+    const portRes = await sb.rpc('upsert_portfolio', {
+      p_symbol_id: symbolId,
+      p_price:     price,
+    });
+    if(portRes.error) throw new Error(JSON.stringify(portRes.error));
+
+    const newAvg      = parseFloat(portRes.data?.avg_cost) || price;
+    const portfolioId = portRes.data?.id || portIdMap[symbol] || null;
+
+    // INSERT trade_journal
+    const today = new Date().toISOString().slice(0,10);
+    const sess  = (allRows.find(r=>r.symbol===symbol)?.session || 'OPEN').toUpperCase();
+    const validSess = ['PREMARKET','OPEN','MIDDAY','CLOSE'].includes(sess) ? sess : 'OPEN';
+
+    await (await sb.from('trade_journal')).insert({
+      symbol_id:          symbolId,
+      portfolio_id:       portfolioId,
+      trade_date:         today,
+      session:            validSess,
+      action_recommended: 'BUY / ADD',
+      actual_action:      'ซื้อ',
+      price:              price,
+      cost_price:         newAvg,
+      score:              allRows.find(r=>r.symbol===symbol)?.score || 0,
+      composite_score:    allRows.find(r=>r.symbol===symbol)?._comp || null,
+    });
+
+    // อัพเดต portMap + portIdMap ทันที
+    portMap[symbol]   = newAvg;
+    portIdMap[symbol] = portfolioId;
+
+    // อัพเดต portfolioRows สำหรับ render
+    const rowIdx = portfolioRows.findIndex(r=>r[0]?.trim().toUpperCase()===symbol);
+    if(rowIdx >= 1) {
+      portfolioRows[rowIdx][1] = newAvg.toFixed(4);
+    } else {
+      portfolioRows.push([symbol, newAvg.toFixed(4)]);
+    }
+
+    alert(`✅ ซื้อเพิ่ม ${symbol} ที่ $${price.toFixed(2)}
+Avg Cost ใหม่: $${newAvg.toFixed(2)}
+บันทึกลง Supabase แล้วครับ`);
+    renderPortfolio();
+
+  } catch(err) {
+    console.error('[buyPortfolio]', err);
+    alert('บันทึกไม่สำเร็จ: ' + err.message);
+  }
+}
+
+async function sellPortfolio(symbol, currentPrice) {
+  const cost = portMap[symbol] || 0;
+  const priceInput = prompt(`ขาย ${symbol}
+ราคาทุนเฉลี่ย: $${cost.toFixed(2)}
+กรอกราคาที่ขายจริงครับ:`, currentPrice);
+  if(!priceInput) return;
+  const price = parseFloat(priceInput);
+  if(isNaN(price) || price <= 0) { alert('ราคาไม่ถูกต้องครับ'); return; }
+
+  const symbolId    = symMapB[symbol];
+  const portfolioId = portIdMap[symbol];
+  if(!symbolId) { alert(`ไม่พบ ${symbol} ใน Supabase ครับ`); return; }
+
+  const pnl = cost > 0 ? ((price - cost) / cost * 100) : 0;
+
+  try {
+    // PATCH portfolio is_active = false
+    const patchRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/portfolio?symbol_id=eq.${symbolId}`,
+      {
+        method: 'PATCH',
+        headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify({ is_active: false, updated_at: new Date().toISOString() }),
+      }
+    );
+    if(!patchRes.ok) throw new Error('PATCH portfolio failed: ' + patchRes.status);
+
+    // INSERT trade_journal
+    const today = new Date().toISOString().slice(0,10);
+    const sess  = (allRows.find(r=>r.symbol===symbol)?.session || 'OPEN').toUpperCase();
+    const validSess = ['PREMARKET','OPEN','MIDDAY','CLOSE'].includes(sess) ? sess : 'OPEN';
+
+    await (await sb.from('trade_journal')).insert({
+      symbol_id:          symbolId,
+      portfolio_id:       portfolioId || null,
+      trade_date:         today,
+      session:            validSess,
+      action_recommended: 'TAKE PROFIT',
+      actual_action:      'ขายหมด',
+      price:              price,
+      cost_price:         cost,
+      pnl_pct:            parseFloat(pnl.toFixed(4)),
+      score:              allRows.find(r=>r.symbol===symbol)?.score || 0,
+      composite_score:    allRows.find(r=>r.symbol===symbol)?._comp || null,
+    });
+
+    // ลบออกจาก portMap + portIdMap
+    delete portMap[symbol];
+    delete portIdMap[symbol];
+    portfolioRows = portfolioRows.filter(r=>r[0]?.trim().toUpperCase()!==symbol);
+
+    const pnlTxt = pnl >= 0 ? `+${pnl.toFixed(2)}%` : `${pnl.toFixed(2)}%`;
+    alert(`✅ ขาย ${symbol} ที่ $${price.toFixed(2)}
+P&L: ${pnlTxt}
+บันทึกลง Supabase แล้วครับ`);
+    renderPortfolio();
+
+  } catch(err) {
+    console.error('[sellPortfolio]', err);
+    alert('บันทึกไม่สำเร็จ: ' + err.message);
+  }
 }
 
 /* ============================================================ STOCK LATEST TAB */
