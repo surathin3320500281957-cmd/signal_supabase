@@ -804,8 +804,9 @@ let filterNow = 'ALL';
 let symFilterNowTl = 'ALL';
 const SESSION_ORDER = {PREMARKET:0,OPEN:1,MIDDAY:2,CLOSE:3};
 
-// ML state — 6D weights (RSI/Heat/pct50/EMAMom/Score/GroupRS) รวม = 1.0
-let mlWeights = {RSI:0.26,Heat:0.22,pct50:0.18,EMAMom:0.18,Score:0.09,GroupRS:0.07};
+// ML state — 7D weights (RSI/Heat/pct50/EMAMom/Score/GroupRS/Slope) รวม = 1.0
+let mlWeights = {RSI:0.24,Heat:0.20,pct50:0.17,EMAMom:0.17,Score:0.09,GroupRS:0.07,Slope:0.06};
+let mlSlopeCache = {}; // symbol → slope (compute ครั้งเดียวตอน train)
 let mlThresholds = {buy:35,hold:65,partial:80,sell:80};
 let mlCorrelations = {};
 let mlAccuracy = {};
@@ -813,6 +814,31 @@ let mlCM = {}; // Confusion Matrix: Precision / Recall / F1 per action
 let mlGroupRegime = {};
 let mlTrained = false;
 let mlVersion = 0;
+
+/* ============================================================ FORWARD TRAINING SET (Step 3)
+   สร้าง training set แบบ forward return:
+   แต่ละ row เวลา t → Y = %return ที่ t+horizon sessions ข้างหน้า
+   ML เรียนจาก "อนาคตจริง" แทน circular correlation กับ %EMA50
+*/
+function buildForwardTrainingSet(horizon) {
+  const h = horizon || 4; // 4 sessions ≈ 1 วันเทรด
+  const bySym = {};
+  allRows.forEach(r => {
+    if(!r.symbol || !(r.price > 0)) return;
+    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+  });
+  const X = [], Yf = [];
+  Object.values(bySym).forEach(rows => {
+    rows.sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+    for(let i = 0; i + h < rows.length; i++) {
+      const cur = rows[i], fut = rows[i + h];
+      if(!(cur.price > 0) || !(fut.price > 0)) continue;
+      X.push(cur);
+      Yf.push((fut.price - cur.price) / cur.price * 100);
+    }
+  });
+  return { X, Yf };
+}
 
 /* ============================================================ AUTO TRAIN (silent) */
 async function autoTrain() {
@@ -823,19 +849,38 @@ async function autoTrain() {
     const sumRows = parseSummaryRows();
     mlGroupRegime = computeGroupRegime();
 
-    // Step 1
+    // Step 1 — Y = Forward Return (Step 3 upgrade)
+    // ML เรียนจากราคาจริง 1 วันข้างหน้า ถ้าข้อมูลพอ (≥50 samples)
+    // ถ้าไม่พอ fallback ไป cross-sectional %EMA50 แบบเดิม
     const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
-    const Y       = latest.map(r=>r.pct_ema50/maxPct);
-    const rsiArr  = latest.map(r=>Math.max(0,(r.rsi-30)/70));
-    const heatArr = latest.map(r=>(r.heat_n-1)/2);
-    const scrArr  = latest.map(r=>r.score>4?(r.score-4)/4:0);
-    const momArr  = latest.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
-    const pctArr  = latest.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
+    const fwd = buildForwardTrainingSet(4);
+    let trainRows, Y, yMode;
+    if(fwd.X.length >= 50) {
+      trainRows = fwd.X;
+      const maxAbsY = Math.max(...fwd.Yf.map(v=>Math.abs(v)), 1);
+      Y = fwd.Yf.map(v => Math.max(-1, Math.min(1, v / maxAbsY)));
+      yMode = 'forward';
+    } else {
+      trainRows = latest;
+      Y = latest.map(r=>r.pct_ema50/maxPct);
+      yMode = 'cross-sectional';
+    }
+    console.log(`[AutoTrain] Y mode: ${yMode} · samples: ${trainRows.length}`);
+
+    const rsiArr  = trainRows.map(r=>Math.max(0,(r.rsi-30)/70));
+    const heatArr = trainRows.map(r=>(r.heat_n-1)/2);
+    const scrArr  = trainRows.map(r=>r.score>4?(r.score-4)/4:0);
+    const momArr  = trainRows.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
+    const pctArr  = trainRows.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
     // GroupRS (6th dimension): rs ของกลุ่มที่หุ้นนั้นอยู่ clamp ±10 → 0-1
-    const grsArr  = latest.map(r=>{
+    const grsArr  = trainRows.map(r=>{
       const rs = mlGroupRegime[r.group]?.rs ?? 0;
       return (Math.max(-10,Math.min(10,rs))+10)/20;
     });
+    // Slope (7th dimension): compute ครั้งเดียวต่อ symbol → cache
+    mlSlopeCache = {};
+    latest.forEach(r=>{ mlSlopeCache[r.symbol] = trendSlope(r.symbol, maxPct)?.slope || 0; });
+    const slopeArr = trainRows.map(r=>Math.max(-1, Math.min(1, (mlSlopeCache[r.symbol]||0) / 10)));
 
     let corrs = {
       RSI:    pearson(rsiArr,  Y),
@@ -844,6 +889,7 @@ async function autoTrain() {
       EMAMom: pearson(momArr,  Y),
       Score:  pearson(scrArr,  Y),
       GroupRS:pearson(grsArr,  Y),
+      Slope:  pearson(slopeArr,Y),
     };
 
     // Step 2: outcome-weighted จาก summary จริง
@@ -861,6 +907,7 @@ async function autoTrain() {
         mom:  r.ema50>0?Math.min(Math.max(0,((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1)),1):0,
         scr:  r.score>4?(r.score-4)/4:0,
         grs:  (Math.max(-10,Math.min(10,mlGroupRegime[r.group]?.rs??0))+10)/20,
+        slp:  Math.max(-1,Math.min(1,(mlSlopeCache[r.symbol]||0)/10)),
       }));
       const wv = bv(bestEntryRows), lv = bv(dangerRows);
       if(wv.length>=2 && lv.length>=2) {
@@ -872,6 +919,7 @@ async function autoTrain() {
           EMAMom: mean(wv,'mom') -mean(lv,'mom'),
           Score:  mean(wv,'scr') -mean(lv,'scr'),
           GroupRS:mean(wv,'grs') -mean(lv,'grs'),
+          Slope:  mean(wv,'slp') -mean(lv,'slp'),
         };
         const labeled = bestEntryRows.length + dangerRows.length;
         const blend = Math.min(0.5, labeled/40);
@@ -1286,6 +1334,22 @@ function trendSlope(symbol, maxPct50) {
   return { slope: +slope.toFixed(1), label, cls, points: pts };
 }
 
+/* ============================================================ PCT FROM HIGH
+   %drop จาก high ล่าสุด (lookback 10 sessions)
+   ใช้เป็น exit signal — ราคาร่วงเร็วจาก high = อันตราย
+*/
+function pctFromHigh(symbol) {
+  const rows = allRows
+    .filter(r => r.symbol === symbol && r.price > 0)
+    .sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+  if(rows.length < 3) return { drop: 0, high: 0, current: 0 };
+  const recent  = rows.slice(-10);
+  const high    = Math.max(...recent.map(r => r.price));
+  const current = recent[recent.length-1].price;
+  const drop    = high > 0 ? +((high - current) / high * 100).toFixed(2) : 0;
+  return { drop, high, current };
+}
+
 function composite(r, maxPct50) {
   const w = mlWeights;
   const rsiN=Math.max(0,(r.rsi-30)/70);
@@ -1294,8 +1358,10 @@ function composite(r, maxPct50) {
   const pctN=maxPct50>0?Math.min(Math.max(-1,r.pct_ema50/maxPct50),1):0;
   const momN=r.ema50>0?Math.min(Math.max(-1,((r.ema20-r.ema50)/r.ema50*100)/(maxPct50||1)),1):0;
   const scrN=r.score>4?(r.score-4)/4:0;
-  // raw composite
-  const raw = rsiN*w.RSI+heatN*w.Heat+pctN*w.pct50+momN*w.EMAMom+scrN*w.Score;
+  // Slope (7th dim): ใช้ mlSlopeCache — ไม่เรียก trendSlope ซ้ำทุก render
+  const slpN=Math.max(-1, Math.min(1, (mlSlopeCache[r.symbol]||0) / 10));
+  // raw composite — รวม Slope
+  const raw = rsiN*w.RSI+heatN*w.Heat+pctN*w.pct50+momN*w.EMAMom+scrN*w.Score+slpN*(w.Slope||0);
   // blend health score เข้ามา 15% เพื่อให้ EMA trend กดคะแนนได้จริง
   const hs = healthScore(r);
   const hsN = Math.min(Math.max(hs/100, -0.6), 1); // normalize -60..+100 → -0.6..1
@@ -1352,6 +1418,18 @@ function portfolioAction(h) {
   const ms    = h._momentum;
   const pnl   = h.pnl;
   const slope = h._slope?.slope ?? 0;
+  const drop  = h._dropFromHigh ?? 0;      // %drop จาก high 10 sessions
+  const emaCrossUnder = h._emaCrossUnder ?? false; // EMA20 < EMA50
+
+  // === Exit Override 1 — ร่วงจาก high เร็ว (แก้ TP Recall ต่ำ) ===
+  if(drop >= 8 && pnl !== null && pnl > 0)
+    return { action:`📉 ร่วงจาก High -${drop}% · TP ด่วน`, cls:'at-sell' };
+  if(drop >= 12)
+    return { action:`🔻 ร่วงจาก High -${drop}% · ออกด่วน`, cls:'at-sell' };
+
+  // === Exit Override 2 — EMA20 ตัดลง EMA50 = trend กลับทิศจริง ===
+  if(emaCrossUnder && slope < 0)
+    return { action:'⚠️ EMA20 ตัดลง EMA50 · Trend กลับ · TP', cls:'at-sell' };
 
   // === Trend Override — อ่อนแรงเร็ว = อันตราย ไม่ว่า PnL จะเป็นอะไร ===
   if(slope <= -8) return { action:'📉 อ่อนแรงเร็ว · ออกด่วน', cls:'at-sell' };
@@ -1485,17 +1563,32 @@ function mlStep1() {
 // ---- Step 2: Enhanced Pearson Correlation + Outcome-weighted ----
 function mlStep2(latest, sumRows) {
   const maxPct = Math.max(...latest.map(r=>r.pct_ema50),1);
-  const Y = latest.map(r=>r.pct_ema50/maxPct);
-  const rsiArr = latest.map(r=>Math.max(0,(r.rsi-30)/70));
-  const heatArr = latest.map(r=>(r.heat_n-1)/2);
-  const scrArr = latest.map(r=>r.score>4?(r.score-4)/4:0);
-  const momArr = latest.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
-  const pctArr = latest.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
+  // Y = Forward Return (Step 3) ถ้าข้อมูลพอ ไม่งั้น fallback cross-sectional
+  const fwd2 = buildForwardTrainingSet(4);
+  let trainRows2, Y;
+  if(fwd2.X.length >= 50) {
+    trainRows2 = fwd2.X;
+    const maxAbsY2 = Math.max(...fwd2.Yf.map(v=>Math.abs(v)), 1);
+    Y = fwd2.Yf.map(v => Math.max(-1, Math.min(1, v / maxAbsY2)));
+  } else {
+    trainRows2 = latest;
+    Y = latest.map(r=>r.pct_ema50/maxPct);
+  }
+  const rsiArr = trainRows2.map(r=>Math.max(0,(r.rsi-30)/70));
+  const heatArr = trainRows2.map(r=>(r.heat_n-1)/2);
+  const scrArr = trainRows2.map(r=>r.score>4?(r.score-4)/4:0);
+  const momArr = trainRows2.map(r=>r.ema50>0?Math.min(((r.ema20-r.ema50)/r.ema50*100)/(maxPct||1),1):0);
+  const pctArr = trainRows2.map(r=>r.ema50>0?Math.min((r.ema20/r.ema50-1)*5,1):0);
   // GroupRS (6th dimension): rs ของกลุ่มที่หุ้นนั้นอยู่ clamp ±10 → 0-1
-  const grsArr = latest.map(r=>{
+  const grsArr = trainRows2.map(r=>{
     const rs = mlGroupRegime[r.group]?.rs ?? 0;
     return (Math.max(-10,Math.min(10,rs))+10)/20;
   });
+  // Slope (7th dimension): ใช้ mlSlopeCache — refresh ถ้าว่าง
+  if(Object.keys(mlSlopeCache).length === 0) {
+    latest.forEach(r=>{ mlSlopeCache[r.symbol] = trendSlope(r.symbol, maxPct)?.slope || 0; });
+  }
+  const slopeArr = trainRows2.map(r=>Math.max(-1, Math.min(1, (mlSlopeCache[r.symbol]||0) / 10)));
 
   let corrs = {
     RSI:    pearson(rsiArr,  Y),
@@ -1504,6 +1597,7 @@ function mlStep2(latest, sumRows) {
     EMAMom: pearson(momArr,  Y),
     Score:  pearson(scrArr,  Y),
     GroupRS:pearson(grsArr,  Y),
+    Slope:  pearson(slopeArr,Y),
   };
 
   // === TIME DECAY: trade ใหม่ได้ weight มากกว่า trade เก่า ===
@@ -1537,6 +1631,7 @@ function mlStep2(latest, sumRows) {
           mom:  x.lx.ema50>0?Math.min(Math.max(0,((x.lx.ema20-x.lx.ema50)/x.lx.ema50*100)/(maxPct||1)),1):0,
           scr:  x.lx.score>4?(x.lx.score-4)/4:0,
           grs:  (Math.max(-10,Math.min(10,mlGroupRegime[x.lx.group]?.rs??0))+10)/20,
+          slp:  Math.max(-1,Math.min(1,(mlSlopeCache[x.lx.symbol]||0)/10)),
           dw:   x.dw,
         }));
     };
@@ -1557,6 +1652,7 @@ function mlStep2(latest, sumRows) {
         EMAMom: wmean(bestVecs,'mom')  - wmean(dangerVecs,'mom'),
         Score:  wmean(bestVecs,'scr')  - wmean(dangerVecs,'scr'),
         GroupRS:wmean(bestVecs,'grs')  - wmean(dangerVecs,'grs'),
+        Slope:  wmean(bestVecs,'slp')  - wmean(dangerVecs,'slp'),
       };
       const labeledCount = bestEntryRows.length + dangerRows.length;
       const blendFactor = Math.min(0.5, labeledCount / 40);
@@ -1935,7 +2031,7 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 // ---- Render weight bars (clickable) ----
 function renderWeightBars() {
   const entries = Object.entries(mlWeights);
-  const colors = {RSI:'var(--danger)',Heat:'var(--warn)',pct50:'var(--acc2)',EMAMom:'var(--purple)',Score:'var(--teal)'};
+  const colors = {RSI:'var(--danger)',Heat:'var(--warn)',pct50:'var(--acc2)',EMAMom:'var(--purple)',Score:'var(--teal)',GroupRS:'var(--muted)',Slope:'var(--acc)'};
   document.getElementById('weightBars').innerHTML = entries.map(([k,v])=>{
     const pct=(v*100).toFixed(1);
     const corr=mlCorrelations[k]||0;
@@ -2060,6 +2156,7 @@ function buildMLConfigJSON() {
       RSI_min:30,RSI_range:70,
       Heat_min:1,Heat_range:2,
       Score_min:4,Score_range:4,
+      Slope_min:-10,Slope_range:20,
     }
   };
   const json = JSON.stringify(cfg, null, 2);
@@ -2763,8 +2860,12 @@ function renderPortfolio() {
     const ts = trendSlope(sym, maxPct50);
     const hs = stock ? healthScore(stock, ts.slope) : 0;
     const ms = stock ? momentumScore(stock) : 0;
+    // Exit signals (Step 1)
+    const pfh = pctFromHigh(sym);
+    const emaCrossUnder = stock ? (stock.ema20 > 0 && stock.ema50 > 0 && stock.ema20 < stock.ema50) : false;
 
-    const hObj = {slHit, pnl, comp, _health:hs, _momentum:ms, _slope:ts};
+    const hObj = {slHit, pnl, comp, _health:hs, _momentum:ms, _slope:ts,
+                  _dropFromHigh: pfh.drop, _emaCrossUnder: emaCrossUnder};
     const {action, cls:actionCls} = portfolioAction(hObj);
     return {sym, cost, price, pnl, comp, upsideVal, action, actionCls,
             _health:hs, _momentum:ms, _slope:ts,
