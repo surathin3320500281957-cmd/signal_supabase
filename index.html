@@ -2109,7 +2109,9 @@ async function trainValueModel() {
     Object.entries(corrs).forEach(([k,v]) => { weights[k] = +(Math.abs(v||0)/absSum).toFixed(4); });
 
     // 5. save Supabase config_type='value'
-    const versionKey = 'value-' + new Date().toISOString().slice(0,10);
+    // version มี timestamp กันซ้ำ + แยก 2 ขั้นตอน (ปิด active เก่า → insert ใหม่)
+    // เลี่ยง error "ON CONFLICT cannot affect row a second time" จาก trigger single-active
+    const versionKey = 'value-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
     const cfg = {
       version:      versionKey,
       config_type:  'value',
@@ -2122,9 +2124,17 @@ async function trainValueModel() {
       trained_at:   new Date().toISOString(),
     };
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config?on_conflict=version,config_type`, {
+    // ขั้นที่ 1: ปิด active ของ value เดิมก่อน (กัน trigger ชน)
+    await fetch(`${SUPABASE_URL}/rest/v1/ml_config?config_type=eq.value&is_active=eq.true`, {
+      method: 'PATCH',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ is_active: false }),
+    });
+
+    // ขั้นที่ 2: insert row ใหม่ (version unique — ไม่มีทางซ้ำ)
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
       method: 'POST',
-      headers: { ...sb._hdr(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
       body: JSON.stringify([cfg]),
     });
     if(!res.ok) {
