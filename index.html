@@ -567,7 +567,12 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <!-- Action buttons -->
   <div class="ml-header-row">
     <button class="ml-train-btn" id="trainBtn" onclick="runMLTrain()">⚡ Train ML</button>
+    <button class="ml-train-btn" id="trainValueBtn" onclick="trainValueModel()" style="border-color:rgba(244,114,182,.5);color:#f472b6;">💎 Train Value</button>
     <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
+    <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
+      <div id="valueWeightsBody" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.9;"></div>
+    </div>
     <span class="ml-status-txt" id="mlStatusTxt">กด Train เพื่อเริ่ม Algorithm 4 ขั้นตอน</span>
   </div>
 
@@ -2024,6 +2029,137 @@ async function _doRunMLTrain() {
   document.getElementById('mlConfigPreview').style.display='block';
 
   btn.disabled = false;
+}
+
+// ============================================================
+// VALUE MODEL — train หา bounce pattern จากหุ้นร่วง (pct50 < 0)
+// แยกจาก momentum model · เก็บ config_type='value'
+// ============================================================
+async function trainValueModel() {
+  const btn = document.getElementById('trainValueBtn');
+  const panel = document.getElementById('valueWeightsPanel');
+  const body  = document.getElementById('valueWeightsBody');
+  if(!btn) return;
+  btn.disabled = true;
+  const origTxt = btn.textContent;
+  btn.textContent = '⏳ Training...';
+
+  try {
+    // 1. สร้าง forward training set เฉพาะหุ้นร่วง (pct50 < 0)
+    const h = 4; // 4 sessions ≈ 1 วัน
+    const bySym = {};
+    allRows.forEach(r => {
+      if(!r.symbol || !(r.price > 0)) return;
+      (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+    });
+
+    const maxPct = Math.max(...getLatest().map(r=>r.pct_ema50), 1);
+    const feats = []; // {draw, rsiLow, dropHigh, slopeRec, grs}
+    const Yf    = []; // forward return
+
+    Object.values(bySym).forEach(rows => {
+      rows.sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+      for(let i = 0; i + h < rows.length; i++) {
+        const cur = rows[i], fut = rows[i + h];
+        if(!(cur.price > 0) || !(fut.price > 0)) continue;
+        // === กรองเฉพาะหุ้นร่วง: pct จาก EMA50 < 0 ===
+        const pct = cur.ema50 > 0 ? (cur.price - cur.ema50) / cur.ema50 * 100 : 0;
+        if(pct >= 0) continue; // เอาเฉพาะที่ต่ำกว่า EMA50
+
+        // === value features ===
+        const draw     = Math.min(1, Math.max(0, -pct / 15));           // drawdown depth 0..1
+        const rsiLow   = Math.min(1, Math.max(0, (50 - (cur.rsi||50)) / 30)); // ยิ่ง RSI ต่ำ ยิ่งสูง
+        // drop from recent high (lookback 10)
+        const win      = rows.slice(Math.max(0,i-9), i+1);
+        const hi       = Math.max(...win.map(r=>r.price));
+        const dropHigh = hi > 0 ? Math.min(1, (hi - cur.price) / hi / 0.2) : 0; // 0..1 (20%=เต็ม)
+        // slope recovery — เทียบ price 3 รอบก่อน
+        const prev3    = rows[Math.max(0,i-3)];
+        const slopeRec = (prev3 && prev3.price > 0)
+          ? Math.min(1, Math.max(0, (cur.price - prev3.price) / prev3.price / 0.05)) : 0; // เด้ง 5%=เต็ม
+        // group RS
+        const grs      = (Math.max(-10, Math.min(10, mlGroupRegime[cur.group]?.rs ?? 0)) + 10) / 20;
+
+        feats.push({ draw, rsiLow, dropHigh, slopeRec, grs });
+        Yf.push((fut.price - cur.price) / cur.price * 100);
+      }
+    });
+
+    if(feats.length < 30) {
+      throw new Error(`ข้อมูลหุ้นร่วงไม่พอ (${feats.length} samples · ต้อง ≥30)`);
+    }
+
+    // 2. normalize Y → -1..1
+    const maxAbsY = Math.max(...Yf.map(v => Math.abs(v)), 1);
+    const Y = Yf.map(v => Math.max(-1, Math.min(1, v / maxAbsY)));
+
+    // 3. Pearson correlation ของแต่ละ feature กับ bounce
+    const col = k => feats.map(f => f[k]);
+    let corrs = {
+      Drawdown:  pearson(col('draw'),     Y),
+      RSILow:    pearson(col('rsiLow'),   Y),
+      DropHigh:  pearson(col('dropHigh'), Y),
+      SlopeRec:  pearson(col('slopeRec'), Y),
+      GroupRS:   pearson(col('grs'),      Y),
+    };
+
+    // 4. normalize → weights (abs / sum, กัน NaN)
+    const absSum = Object.values(corrs).reduce((s,v)=>s+Math.abs(v||0), 0) || 1;
+    const weights = {};
+    Object.entries(corrs).forEach(([k,v]) => { weights[k] = +(Math.abs(v||0)/absSum).toFixed(4); });
+
+    // 5. save Supabase config_type='value'
+    const versionKey = 'value-' + new Date().toISOString().slice(0,10);
+    const cfg = {
+      version:      versionKey,
+      config_type:  'value',
+      weights:      weights,
+      thresholds:   { bounce_min: 0.5 },
+      normalize:    { note: 'value features 0..1 already normalized' },
+      correlations: corrs,
+      note:         `Value model · ${feats.length} bounce samples · forward ${h} sessions`,
+      is_active:    true,
+      trained_at:   new Date().toISOString(),
+    };
+
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([cfg]),
+    });
+    if(!res.ok) {
+      const e = await res.json();
+      throw new Error(e.message || 'save ไม่สำเร็จ');
+    }
+
+    // 6. แสดง weights ให้ดู
+    const wTxt = Object.entries(weights)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `${k}=${(v*100).toFixed(1)}% <span style="color:#64748b">(r=${corrs[k]>=0?'+':''}${corrs[k].toFixed(3)})</span>`)
+      .join(' · ');
+    if(body) body.innerHTML = `${wTxt}<br><span style="color:#64748b;font-size:9px;">${feats.length} samples · เก็บ config_type='value' แล้ว</span>`;
+    if(panel) panel.style.display = 'block';
+
+    btn.textContent = '✅ Value trained!';
+    btn.style.borderColor = 'var(--acc)';
+    btn.style.color = 'var(--acc)';
+    setTimeout(() => {
+      btn.textContent = origTxt;
+      btn.style.borderColor = 'rgba(244,114,182,.5)';
+      btn.style.color = '#f472b6';
+      btn.disabled = false;
+    }, 3000);
+
+  } catch(err) {
+    console.error('[trainValueModel]', err);
+    if(body) body.innerHTML = `<span style="color:var(--tp)">❌ ${err.message}</span>`;
+    if(panel) panel.style.display = 'block';
+    btn.textContent = '⚠️ ' + (err.message.length > 20 ? 'Error' : err.message);
+    setTimeout(() => {
+      btn.textContent = origTxt;
+      btn.disabled = false;
+    }, 3000);
+  }
 }
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
