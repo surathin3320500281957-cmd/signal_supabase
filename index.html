@@ -2109,8 +2109,9 @@ async function trainValueModel() {
     Object.entries(corrs).forEach(([k,v]) => { weights[k] = +(Math.abs(v||0)/absSum).toFixed(4); });
 
     // 5. save Supabase config_type='value'
-    // version มี timestamp กันซ้ำ + แยก 2 ขั้นตอน (ปิด active เก่า → insert ใหม่)
-    // เลี่ยง error "ON CONFLICT cannot affect row a second time" จาก trigger single-active
+    // version มี timestamp กันซ้ำ + insert อย่างเดียว (ไม่ต้อง PATCH ปิด active เก่าเอง)
+    // trigger ensure_single_active_ml_config ใน Supabase จะปิด row เก่าให้อัตโนมัติ
+    // แบบ atomic ใน transaction เดียวกับ insert — ถ้า insert fail row เก่าจะไม่ถูกปิด (ไม่มีช่วงที่ active=0)
     const versionKey = 'value-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
     const cfg = {
       version:      versionKey,
@@ -2124,14 +2125,6 @@ async function trainValueModel() {
       trained_at:   new Date().toISOString(),
     };
 
-    // ขั้นที่ 1: ปิด active ของ value เดิมก่อน (กัน trigger ชน)
-    await fetch(`${SUPABASE_URL}/rest/v1/ml_config?config_type=eq.value&is_active=eq.true`, {
-      method: 'PATCH',
-      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ is_active: false }),
-    });
-
-    // ขั้นที่ 2: insert row ใหม่ (version unique — ไม่มีทางซ้ำ)
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
       method: 'POST',
       headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
@@ -2321,8 +2314,8 @@ async function exportMLConfig() {
   a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
 
-  // Save ขึ้น Supabase — แยก 2 ขั้นตอน (ปิด active เก่า → insert ใหม่)
-  // เลี่ยง error "ON CONFLICT cannot affect row a second time" จาก trigger single-active
+  // Save ขึ้น Supabase — insert อย่างเดียว (trigger ensure_single_active_ml_config
+  // ปิด row เก่าให้อัตโนมัติแบบ atomic ใน transaction เดียวกับ insert)
   const btn = document.getElementById('exportBtn');
   const origTxt = btn.textContent;
   btn.textContent = '⏳ Saving...';
@@ -2332,14 +2325,6 @@ async function exportMLConfig() {
     // version มี timestamp กันซ้ำ
     const versionKey = (cfg.version || 'v') + '-' + new Date().toISOString().slice(11,19).replace(/:/g,'');
 
-    // ขั้นที่ 1: ปิด active ของ backend เดิม
-    await fetch(`${SUPABASE_URL}/rest/v1/ml_config?config_type=eq.backend&is_active=eq.true`, {
-      method: 'PATCH',
-      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ is_active: false }),
-    });
-
-    // ขั้นที่ 2: insert row ใหม่
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
       method: 'POST',
       headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
