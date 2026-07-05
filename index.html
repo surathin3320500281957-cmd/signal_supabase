@@ -2321,28 +2321,43 @@ async function exportMLConfig() {
   a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
 
-  // Save ขึ้น Supabase แทน Google Drive
+  // Save ขึ้น Supabase — แยก 2 ขั้นตอน (ปิด active เก่า → insert ใหม่)
+  // เลี่ยง error "ON CONFLICT cannot affect row a second time" จาก trigger single-active
   const btn = document.getElementById('exportBtn');
   const origTxt = btn.textContent;
   btn.textContent = '⏳ Saving...';
   btn.disabled = true;
   try {
     const cfg = JSON.parse(json);
-    // upsert ml_config ใน Supabase (config_type='backend')
-    const { error } = await (await sb.from('ml_config')).upsert({
-      version:      cfg.version,
-      config_type:  'backend',
-      weights:      cfg.weights,
-      thresholds:   cfg.thresholds,
-      normalize:    cfg.normalize,
-      correlations: cfg.correlations||{},
-      group_regime: cfg.groupRegime||{},
-      note:         cfg.note||'',
-      is_active:    true,
-      trained_at:   cfg.generated||new Date().toISOString(),
-    }, { onConflict: 'version,config_type' });
+    // version มี timestamp กันซ้ำ
+    const versionKey = (cfg.version || 'v') + '-' + new Date().toISOString().slice(11,19).replace(/:/g,'');
 
-    if(error) throw new Error(error.message||JSON.stringify(error));
+    // ขั้นที่ 1: ปิด active ของ backend เดิม
+    await fetch(`${SUPABASE_URL}/rest/v1/ml_config?config_type=eq.backend&is_active=eq.true`, {
+      method: 'PATCH',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ is_active: false }),
+    });
+
+    // ขั้นที่ 2: insert row ใหม่
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify([{
+        version:      versionKey,
+        config_type:  'backend',
+        weights:      cfg.weights,
+        thresholds:   cfg.thresholds,
+        normalize:    cfg.normalize,
+        correlations: cfg.correlations||{},
+        group_regime: cfg.groupRegime||{},
+        note:         cfg.note||'',
+        is_active:    true,
+        trained_at:   cfg.generated||new Date().toISOString(),
+      }]),
+    });
+
+    if(!res.ok) { const e = await res.json(); throw new Error(e.message||JSON.stringify(e)); }
 
     btn.textContent = '✅ Saved to Supabase!';
     btn.style.borderColor = 'var(--acc)';
