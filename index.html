@@ -2122,7 +2122,7 @@ async function trainValueModel() {
       trained_at:   new Date().toISOString(),
     };
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config?on_conflict=version,config_type`, {
       method: 'POST',
       headers: { ...sb._hdr(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify([cfg]),
