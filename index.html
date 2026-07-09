@@ -2358,6 +2358,7 @@ async function exportMLConfig() {
     btn.textContent = '⚠️ Save ไม่ได้';
     btn.style.borderColor = 'var(--warn)';
     btn.style.color = 'var(--warn)';
+    alert('Save ขึ้น Supabase ไม่สำเร็จครับ\n\nสาเหตุ: ' + err.message + '\n\n(ไฟล์ ml_config JSON ยัง download ไว้ในเครื่องแล้วนะครับ ไม่หาย)');
     setTimeout(() => {
       btn.textContent = origTxt;
       btn.style.borderColor = '';
