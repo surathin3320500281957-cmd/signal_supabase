@@ -2125,27 +2125,53 @@ async function trainValueModel() {
       trained_at:   new Date().toISOString(),
     };
 
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
-      method: 'POST',
-      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
-      body: JSON.stringify([cfg]),
-    });
-    if(!res.ok) {
-      const e = await res.json();
-      throw new Error(e.message || 'save ไม่สำเร็จ');
+    let saveErr = null;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+        method: 'POST',
+        headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+        body: JSON.stringify([cfg]),
+      });
+      if(!res.ok) { const e = await res.json(); saveErr = new Error(e.message || 'save ไม่สำเร็จ'); }
+    } catch(err) {
+      saveErr = err; // network-level error — ไม่ได้แปลว่า insert ไม่สำเร็จเสมอไป
     }
 
-    // 6. แสดง weights ให้ดู
+    // ไม่เดาจาก error type — เช็คของจริงจาก Supabase ว่า version นี้เข้าไปหรือยัง
+    let actuallySaved = false;
+    try {
+      const check = await fetch(
+        `${SUPABASE_URL}/rest/v1/ml_config?select=id&version=eq.${encodeURIComponent(versionKey)}&config_type=eq.value`,
+        { headers: sb._hdr() }
+      );
+      const rows = await check.json();
+      actuallySaved = Array.isArray(rows) && rows.length > 0;
+    } catch(checkErr) {
+      console.warn('[trainValueModel] ตรวจสอบสถานะไม่ได้:', checkErr);
+    }
+
+    // 6. แสดง weights ให้ดู (แสดงเสมอ เพราะ train สำเร็จแล้ว ไม่ว่า save จะเป็นยังไง)
     const wTxt = Object.entries(weights)
       .sort((a,b)=>b[1]-a[1])
       .map(([k,v]) => `${k}=${(v*100).toFixed(1)}% <span style="color:#64748b">(r=${corrs[k]>=0?'+':''}${corrs[k].toFixed(3)})</span>`)
       .join(' · ');
-    if(body) body.innerHTML = `${wTxt}<br><span style="color:#64748b;font-size:9px;">${feats.length} samples · เก็บ config_type='value' แล้ว</span>`;
+    const saveStatusTxt = actuallySaved
+      ? `✅ เก็บ config_type='value' แล้ว (version ${versionKey})`
+      : `❌ Save ไม่สำเร็จ — ${saveErr ? saveErr.message : 'ไม่ทราบสาเหตุ'}`;
+    if(body) body.innerHTML = `${wTxt}<br><span style="color:#64748b;font-size:9px;">${feats.length} samples · ${saveStatusTxt}</span>`;
     if(panel) panel.style.display = 'block';
 
-    btn.textContent = '✅ Value trained!';
-    btn.style.borderColor = 'var(--acc)';
-    btn.style.color = 'var(--acc)';
+    if(actuallySaved) {
+      btn.textContent = '✅ Value trained!';
+      btn.style.borderColor = 'var(--acc)';
+      btn.style.color = 'var(--acc)';
+      if(saveErr) alert('✅ บันทึกสำเร็จจริงครับ (เช็คจาก Supabase แล้วเจอ version ' + versionKey + ')\n\nตอน save เน็ตสะดุดเลยแจ้งเตือนช้าไปหน่อย แต่ข้อมูลเข้าแล้วครับ');
+    } else {
+      btn.textContent = '⚠️ Save ไม่ได้';
+      btn.style.borderColor = 'var(--warn)';
+      btn.style.color = 'var(--warn)';
+      alert('❌ Save ไม่สำเร็จจริงครับ (เช็คจาก Supabase แล้วไม่เจอ version ' + versionKey + ')\n\nสาเหตุ: ' + (saveErr ? saveErr.message : 'ไม่ทราบสาเหตุ'));
+    }
     setTimeout(() => {
       btn.textContent = origTxt;
       btn.style.borderColor = 'rgba(244,114,182,.5)';
@@ -2320,11 +2346,13 @@ async function exportMLConfig() {
   const origTxt = btn.textContent;
   btn.textContent = '⏳ Saving...';
   btn.disabled = true;
-  try {
-    const cfg = JSON.parse(json);
-    // version มี timestamp กันซ้ำ
-    const versionKey = (cfg.version || 'v') + '-' + new Date().toISOString().slice(11,19).replace(/:/g,'');
 
+  const cfg = JSON.parse(json);
+  // version มี timestamp กันซ้ำ
+  const versionKey = (cfg.version || 'v') + '-' + new Date().toISOString().slice(11,19).replace(/:/g,'');
+
+  let saveErr = null;
+  try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
       method: 'POST',
       headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
@@ -2341,31 +2369,45 @@ async function exportMLConfig() {
         trained_at:   cfg.generated||new Date().toISOString(),
       }]),
     });
+    if(!res.ok) { const e = await res.json(); saveErr = new Error(e.message||JSON.stringify(e)); }
+  } catch(err) {
+    saveErr = err; // network-level error (เช่น "Load failed") — ไม่ได้แปลว่า insert ไม่สำเร็จเสมอไป
+  }
 
-    if(!res.ok) { const e = await res.json(); throw new Error(e.message||JSON.stringify(e)); }
+  // ไม่เดาจาก error type — เช็คของจริงจาก Supabase ว่า version นี้เข้าไปหรือยัง
+  let actuallySaved = false;
+  try {
+    const check = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_config?select=id&version=eq.${encodeURIComponent(versionKey)}&config_type=eq.backend`,
+      { headers: sb._hdr() }
+    );
+    const rows = await check.json();
+    actuallySaved = Array.isArray(rows) && rows.length > 0;
+  } catch(checkErr) {
+    console.warn('[exportMLConfig] ตรวจสอบสถานะไม่ได้:', checkErr);
+  }
 
+  if(actuallySaved) {
     btn.textContent = '✅ Saved to Supabase!';
     btn.style.borderColor = 'var(--acc)';
     btn.style.color = 'var(--acc)';
-    setTimeout(() => {
-      btn.textContent = origTxt;
-      btn.style.borderColor = '';
-      btn.style.color = '';
-      btn.disabled = false;
-    }, 3000);
-  } catch(err) {
-    console.warn('[exportMLConfig] Save ไม่ได้:', err);
+    if(saveErr) {
+      // POST ดูเหมือน fail (เช่น เน็ตหลุดตอนรอ response) แต่เช็คแล้วจริงๆ เข้าไปแล้ว
+      alert('✅ บันทึกสำเร็จจริงครับ (เช็คจาก Supabase แล้วเจอ version ' + versionKey + ')\n\nตอนกด Save เน็ตสะดุดเลยแจ้งเตือนช้าไปหน่อย แต่ข้อมูลเข้าแล้วครับ ไม่ต้องกดซ้ำ');
+    }
+  } else {
     btn.textContent = '⚠️ Save ไม่ได้';
     btn.style.borderColor = 'var(--warn)';
     btn.style.color = 'var(--warn)';
-    alert('Save ขึ้น Supabase ไม่สำเร็จครับ\n\nสาเหตุ: ' + err.message + '\n\n(ไฟล์ ml_config JSON ยัง download ไว้ในเครื่องแล้วนะครับ ไม่หาย)');
-    setTimeout(() => {
-      btn.textContent = origTxt;
-      btn.style.borderColor = '';
-      btn.style.color = '';
-      btn.disabled = false;
-    }, 3000);
+    alert('❌ Save ไม่สำเร็จจริงครับ (เช็คจาก Supabase แล้วไม่เจอ version ' + versionKey + ')\n\nสาเหตุ: ' + (saveErr ? saveErr.message : 'ไม่ทราบสาเหตุ') + '\n\n(ไฟล์ ml_config JSON ยัง download ไว้ในเครื่องแล้วนะครับ ไม่หาย — กด Save ใหม่ได้เลย)');
   }
+
+  setTimeout(() => {
+    btn.textContent = origTxt;
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    btn.disabled = false;
+  }, 3000);
 }
 
 function exportSummaryCSV(mode) {
