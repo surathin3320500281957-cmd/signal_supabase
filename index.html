@@ -2340,14 +2340,7 @@ function buildMLConfigJSON() {
 async function exportMLConfig() {
   const json = buildMLConfigJSON();
 
-  // Download เหมือนเดิม
-  const blob = new Blob([json], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-
-  // Save ขึ้น Supabase — insert อย่างเดียว (trigger ensure_single_active_ml_config
+  // Save ขึ้น Supabase ก่อน — insert อย่างเดียว (trigger ensure_single_active_ml_config
   // ปิด row เก่าให้อัตโนมัติแบบ atomic ใน transaction เดียวกับ insert)
   const btn = document.getElementById('exportBtn');
   const origTxt = btn.textContent;
@@ -2393,6 +2386,16 @@ async function exportMLConfig() {
   } catch(checkErr) {
     console.warn('[exportMLConfig] ตรวจสอบสถานะไม่ได้:', checkErr);
   }
+
+  // Download ไฟล์ backup ทีหลังสุด — ย้ายมาไว้หลัง network calls ทั้งหมดเสร็จแล้ว
+  // (เดิม trigger download ก่อน fetch ซึ่งบน Safari/iPadOS การเปิด download sheet อาจทำให้
+  // แท็บถูกมองว่า background ชั่วขณะ แล้ว fetch ที่กำลังรอ response โดนตัดจบด้วย "Load failed"
+  // ย้ายมาไว้ท้ายสุดแบบเดียวกับ trainValueModel ที่ไม่เจอปัญหานี้เลย)
+  const blob = new Blob([json], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
 
   if(actuallySaved) {
     btn.textContent = '✅ Saved to Supabase!';
