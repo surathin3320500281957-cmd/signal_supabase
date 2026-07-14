@@ -488,6 +488,14 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div class="sl-kpi-row" id="slKpiRow"></div>
   <div class="div"></div>
 
+  <!-- 7-Day Performance chart -->
+  <div class="sec" style="margin-top:4px;">📊 7-Day Performance</div>
+  <div id="sevenDayChartWrap" style="overflow-x:auto;padding:8px 0 4px 0;"></div>
+  <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
+    * คำนวณจากราคาล่าสุด เทียบราคา ~7 วันก่อนหน้า (snapshot ที่ใกล้ที่สุด) · ตัวที่ยังไม่มีข้อมูลย้อนหลังครบ 7 วันจะไม่แสดงในกราฟนี้
+  </div>
+  <div class="div"></div>
+
   <!-- Filter + search + export row -->
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
     <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
@@ -3360,7 +3368,93 @@ function rotationCategory(r) {
   return 'FLAT';
 }
 
+/* ============================================================ 7-DAY PERFORMANCE CHART
+   ใช้ allRows ที่มีอยู่แล้ว (ไม่ query เพิ่ม) หาราคาล่าสุด vs ราคา ~7 วันก่อนหน้า
+   ต่อ symbol แล้ว plot เป็น diverging horizontal bar chart (เรียงมาก→น้อย, เขียว=บวก, แดง=ลบ)
+   Fail gracefully ตามหลักการออกแบบระบบ: symbol ไหนข้อมูลย้อนหลังไม่ถึง 7 วัน ข้ามไปเงียบๆ ไม่ error
+*/
+function computeSevenDayPerf() {
+  const bySym = {};
+  allRows.forEach(r => {
+    if(!r.symbol || !(r.price > 0)) return;
+    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+  });
+
+  const out = [];
+  Object.entries(bySym).forEach(([sym, rows]) => {
+    rows.sort((a,b) => { const ka=dtKey(a), kb=dtKey(b); return ka>kb?1:(ka<kb?-1:0); });
+    const latest = rows[rows.length-1];
+    const latestDateStr = dtKey(latest).slice(0,10); // YYYY-MM-DD (dtKey normalize format ให้แล้ว)
+    const [ly,lm,ld] = latestDateStr.split('-').map(Number);
+    const targetDateObj = new Date(ly, lm-1, ld);
+    targetDateObj.setDate(targetDateObj.getDate()-7);
+    const targetKey = targetDateObj.getFullYear()+'-'+String(targetDateObj.getMonth()+1).padStart(2,'0')+'-'+String(targetDateObj.getDate()).padStart(2,'0');
+
+    // หา snapshot ที่ใกล้ targetKey ที่สุด (วันที่ <= targetKey, เอาตัวล่าสุดในช่วงนั้น)
+    let pastRow = null;
+    for(let i=rows.length-1;i>=0;i--){
+      if(dtKey(rows[i]).slice(0,10) <= targetKey){ pastRow = rows[i]; break; }
+    }
+    if(!pastRow || !(pastRow.price > 0)) return; // ข้อมูลย้อนหลังไม่พอ — ข้ามตัวนี้ (ไม่ block ตัวอื่น)
+
+    const pct = (latest.price - pastRow.price) / pastRow.price * 100;
+    out.push({ symbol: sym, group: latest.group||'', pct, latestDate: latestDateStr, pastDate: dtKey(pastRow).slice(0,10) });
+  });
+
+  out.sort((a,b) => b.pct - a.pct);
+  return out;
+}
+
+function renderSevenDayChart() {
+  const wrap = document.getElementById('sevenDayChartWrap');
+  if(!wrap) return;
+  const data = computeSevenDayPerf();
+
+  if(data.length === 0) {
+    wrap.innerHTML = `<div style="padding:12px;color:var(--muted);font-family:var(--mono);font-size:11px;">ยังไม่มีหุ้นตัวไหนมีข้อมูลย้อนหลังครบ 7 วัน — รอสะสมข้อมูลเพิ่มก่อนครับ</div>`;
+    return;
+  }
+
+  const rowH = 15, gap = 3, rowStep = rowH+gap;
+  const labelW = 130, padTop = 6, padBottom = 24, chartW = 460, rightPad = 70;
+  const totalW = labelW + chartW + rightPad;
+  const totalH = padTop + data.length*rowStep + padBottom;
+
+  const maxAbs = Math.max(...data.map(d=>Math.abs(d.pct)), 0.5);
+  const axisMax = Math.max(0.5, Math.ceil(maxAbs*2)/2); // ปัดขึ้นทีละ 0.5 ให้แกนอ่านง่าย
+
+  let gridlines = '';
+  const steps = 4;
+  for(let s=0;s<=steps;s++){
+    const gx = labelW + (chartW/steps)*s;
+    const val = (axisMax/steps)*s;
+    gridlines += `<line x1="${gx}" y1="${padTop}" x2="${gx}" y2="${padTop+data.length*rowStep-gap}" stroke="rgba(255,255,255,.07)" stroke-width="1"></line>
+      <text x="${gx}" y="${padTop+data.length*rowStep-gap+16}" text-anchor="middle" style="font-family:var(--mono);font-size:9px;fill:var(--muted);">${val.toFixed(1)}%</text>`;
+  }
+
+  let bars = '';
+  data.forEach((d,i) => {
+    const y = padTop + i*rowStep;
+    const w = Math.max((Math.abs(d.pct)/axisMax) * chartW, 1);
+    const isPos = d.pct >= 0;
+    const opacity = (0.35 + 0.65*(Math.abs(d.pct)/axisMax)).toFixed(2);
+    const fill = isPos ? `rgba(0,255,178,${opacity})` : `rgba(244,67,54,${opacity})`;
+    const valColor = isPos ? '#4ade80' : '#f87171';
+    bars += `
+      <text x="${labelW-8}" y="${y+rowH*0.78}" text-anchor="end" style="font-family:var(--mono);font-size:10px;fill:var(--text);">${d.symbol}</text>
+      <rect x="${labelW}" y="${y}" width="${w}" height="${rowH}" fill="${fill}" rx="2"></rect>
+      <text x="${labelW+w+6}" y="${y+rowH*0.78}" style="font-family:var(--mono);font-size:10px;font-weight:700;fill:${valColor};">${isPos?'+':''}${d.pct.toFixed(2)}%</text>
+    `;
+  });
+
+  wrap.innerHTML = `<svg viewBox="0 0 ${totalW} ${totalH}" width="100%" style="max-width:${totalW}px;display:block;">
+    ${gridlines}
+    ${bars}
+  </svg>`;
+}
+
 function renderStockLatest() {
+  renderSevenDayChart();
   const latest = getLatest();
   const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
   latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
