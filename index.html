@@ -488,11 +488,14 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div class="sl-kpi-row" id="slKpiRow"></div>
   <div class="div"></div>
 
-  <!-- 7-Day Performance chart -->
-  <div class="sec" style="margin-top:4px;">📊 7-Day Performance</div>
+  <!-- N-Day Performance chart -->
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;">
+    <div class="sec" style="margin:0;">📊 <span id="perfChartTitle">7-Day</span> Performance</div>
+    <div id="perfChartFilterBar" style="display:flex;gap:6px;"></div>
+  </div>
   <div id="sevenDayChartWrap" style="overflow-x:auto;padding:8px 0 4px 0;"></div>
   <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
-    * คำนวณจากราคาล่าสุด เทียบราคา ~7 วันก่อนหน้า (snapshot ที่ใกล้ที่สุด) · ตัวที่ยังไม่มีข้อมูลย้อนหลังครบ 7 วันจะไม่แสดงในกราฟนี้
+    * คำนวณจากราคาล่าสุด เทียบราคา ~<span id="perfChartDaysLabel">7</span> วันก่อนหน้า (snapshot ที่ใกล้ที่สุด) · ตัวที่ยังไม่มีข้อมูลย้อนหลังครบจะไม่แสดงในกราฟนี้
   </div>
   <div class="div"></div>
 
@@ -3373,7 +3376,15 @@ function rotationCategory(r) {
    ต่อ symbol แล้ว plot เป็น diverging horizontal bar chart (เรียงมาก→น้อย, เขียว=บวก, แดง=ลบ)
    Fail gracefully ตามหลักการออกแบบระบบ: symbol ไหนข้อมูลย้อนหลังไม่ถึง 7 วัน ข้ามไปเงียบๆ ไม่ error
 */
-function computeSevenDayPerf() {
+/* ============================================================ N-DAY PERFORMANCE CHART
+   ใช้ allRows ที่มีอยู่แล้ว (ไม่ query เพิ่ม) หาราคาล่าสุด vs ราคา ~N วันก่อนหน้า
+   ต่อ symbol แล้ว plot เป็น diverging horizontal bar chart (เรียงมาก→น้อย, เขียว=บวก, แดง=ลบ)
+   Fail gracefully ตามหลักการออกแบบระบบ: symbol ไหนข้อมูลย้อนหลังไม่ถึง N วัน ข้ามไปเงียบๆ ไม่ error
+   รองรับหลาย timeframe (7D/30D ฯลฯ) ผ่านตัวแปร perfChartDays เดียว ไม่ต้องแยกฟังก์ชันซ้ำ
+*/
+let perfChartDays = 7;
+
+function computeNDayPerf(days) {
   const bySym = {};
   allRows.forEach(r => {
     if(!r.symbol || !(r.price > 0)) return;
@@ -3387,7 +3398,7 @@ function computeSevenDayPerf() {
     const latestDateStr = dtKey(latest).slice(0,10); // YYYY-MM-DD (dtKey normalize format ให้แล้ว)
     const [ly,lm,ld] = latestDateStr.split('-').map(Number);
     const targetDateObj = new Date(ly, lm-1, ld);
-    targetDateObj.setDate(targetDateObj.getDate()-7);
+    targetDateObj.setDate(targetDateObj.getDate()-days);
     const targetKey = targetDateObj.getFullYear()+'-'+String(targetDateObj.getMonth()+1).padStart(2,'0')+'-'+String(targetDateObj.getDate()).padStart(2,'0');
 
     // หา snapshot ที่ใกล้ targetKey ที่สุด (วันที่ <= targetKey, เอาตัวล่าสุดในช่วงนั้น)
@@ -3405,13 +3416,29 @@ function computeSevenDayPerf() {
   return out;
 }
 
-function renderSevenDayChart() {
+function setPerfChartDays(days) {
+  perfChartDays = days;
+  renderPerfChart();
+}
+
+function renderPerfChart() {
+  // filter bar (7D / 30D) — pattern เดียวกับ Filter/Rotation ด้านล่าง
+  const opts = [{d:7,label:'7D'},{d:14,label:'14D'},{d:30,label:'30D'}];
+  const fb = document.getElementById('perfChartFilterBar');
+  if(fb) {
+    fb.innerHTML = opts.map(o=>`<button class="fb ${o.d===perfChartDays?'on':''}" onclick="setPerfChartDays(${o.d})">${o.label}</button>`).join('');
+  }
+  const titleEl = document.getElementById('perfChartTitle');
+  if(titleEl) titleEl.textContent = perfChartDays + '-Day';
+  const daysLabelEl = document.getElementById('perfChartDaysLabel');
+  if(daysLabelEl) daysLabelEl.textContent = perfChartDays;
+
   const wrap = document.getElementById('sevenDayChartWrap');
   if(!wrap) return;
-  const data = computeSevenDayPerf();
+  const data = computeNDayPerf(perfChartDays);
 
   if(data.length === 0) {
-    wrap.innerHTML = `<div style="padding:12px;color:var(--muted);font-family:var(--mono);font-size:11px;">ยังไม่มีหุ้นตัวไหนมีข้อมูลย้อนหลังครบ 7 วัน — รอสะสมข้อมูลเพิ่มก่อนครับ</div>`;
+    wrap.innerHTML = `<div style="padding:12px;color:var(--muted);font-family:var(--mono);font-size:11px;">ยังไม่มีหุ้นตัวไหนมีข้อมูลย้อนหลังครบ ${perfChartDays} วัน — รอสะสมข้อมูลเพิ่มก่อนครับ</div>`;
     return;
   }
 
@@ -3454,7 +3481,7 @@ function renderSevenDayChart() {
 }
 
 function renderStockLatest() {
-  renderSevenDayChart();
+  renderPerfChart();
   const latest = getLatest();
   const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
   latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
