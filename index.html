@@ -488,20 +488,8 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div class="sl-kpi-row" id="slKpiRow"></div>
   <div class="div"></div>
 
-  <!-- N-Day Performance chart -->
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;">
-    <div class="sec" style="margin:0;">📊 <span id="perfChartTitle">7-Day</span> Performance</div>
-    <div id="perfChartFilterBar" style="display:flex;gap:6px;"></div>
-    <span id="perfChartCoverage" style="font-family:var(--mono);font-size:9px;color:var(--muted);"></span>
-  </div>
-  <div id="sevenDayChartWrap" style="overflow-x:auto;padding:8px 0 4px 0;"></div>
-  <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
-    * คำนวณจากราคาล่าสุด เทียบราคา ~<span id="perfChartDaysLabel">7</span> วันก่อนหน้า (snapshot ที่ใกล้ที่สุด) · ตัวที่ยังไม่มีข้อมูลย้อนหลังครบจะไม่แสดงในกราฟนี้
-  </div>
-  <div class="div"></div>
-
   <!-- Filter + search + export row -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
     <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
     <div id="slFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
     <input id="slSearch" type="text" placeholder="ค้นหา symbol..."
@@ -509,12 +497,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
       style="font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
       border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:150px;">
 
-  </div>
-
-  <!-- Rotation filter row -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Rotation</span>
-    <div id="slFilterBarRotation" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
   </div>
 
 
@@ -533,7 +515,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
         <th>ML Score</th>
         <th>Health</th>
         <th>Trend</th>
-        <th>Rotation</th>
         <th>ทำจริง</th>
         <th>คะแนนกำไร ↓</th>
       </tr></thead>
@@ -630,6 +611,20 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
       <div style="margin-top:12px;font-family:var(--mono);font-size:9px;color:var(--muted);line-height:1.7" id="adaptNote">
         ยิ่ง trade จริงเพิ่ม → accuracy สูงขึ้น → model แม่นขึ้นเรื่อยๆ
       </div>
+    </div>
+  </div>
+
+  <!-- 💎 Value Model — Bounce Score (กราฟแยกจาก Momentum ให้อ่านง่าย) -->
+  <div class="sec" style="margin-top:8px;color:#f472b6;">💎 Value Model — Bounce Score (หาจังหวะเด้งของหุ้นร่วง)</div>
+  <div class="ml-grid">
+    <div class="ml-card">
+      <div class="ml-card-title">Step 2 — Pearson Correlation vs Forward Return</div>
+      <div id="valueCorrTable"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">กด Train Value เพื่อคำนวณ correlation</div></div>
+    </div>
+    <div class="ml-card">
+      <div class="ml-card-title">Step 3 — Weights (Bounce Score)</div>
+      <div id="valueWeightBars"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">กด Train Value เพื่อคำนวณ weights</div></div>
+      <div id="valueWeightNote" style="margin-top:10px;font-family:var(--mono);font-size:9px;color:var(--muted)"></div>
     </div>
   </div>
 
@@ -2170,6 +2165,8 @@ async function trainValueModel() {
     }
 
     // 6. แสดง weights ให้ดู (แสดงเสมอ เพราะ train สำเร็จแล้ว ไม่ว่า save จะเป็นยังไง)
+    renderValueCorrTable(corrs);
+    renderValueWeightBars(weights, corrs);
     const wTxt = Object.entries(weights)
       .sort((a,b)=>b[1]-a[1])
       .map(([k,v]) => `${k}=${(v*100).toFixed(1)}% <span style="color:#64748b">(r=${corrs[k]>=0?'+':''}${corrs[k].toFixed(3)})</span>`)
@@ -2177,7 +2174,7 @@ async function trainValueModel() {
     const saveStatusTxt = actuallySaved
       ? `✅ เก็บ config_type='value' แล้ว (version ${versionKey})`
       : `❌ Save ไม่สำเร็จ — ${saveErr ? saveErr.message : 'ไม่ทราบสาเหตุ'}`;
-    if(body) body.innerHTML = `${wTxt}<br><span style="color:#64748b;font-size:9px;">${feats.length} samples · ${saveStatusTxt}</span>`;
+    if(body) body.innerHTML = `${feats.length} samples · ${saveStatusTxt} · รายละเอียดกราฟดูด้านล่าง ⬇️`;
     if(panel) panel.style.display = 'block';
 
     if(actuallySaved) {
@@ -2213,6 +2210,53 @@ async function trainValueModel() {
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
 // ---- Render weight bars (clickable) ----
+// ============================================================
+// 💎 Value Model — Correlation table + Weight bars (การ์ดแยก อ่านง่ายเหมือน Momentum)
+// ============================================================
+function renderValueCorrTable(corrs) {
+  const el = document.getElementById('valueCorrTable');
+  if(!el) return;
+  const rows = Object.entries(corrs).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const maxAbs = Math.max(...rows.map(r=>Math.abs(r[1])), 0.01);
+  el.innerHTML = `
+    <table class="corr-table">
+      <thead><tr><th>Indicator</th><th>Pearson r</th><th>Strength</th></tr></thead>
+      <tbody>${rows.map(([k,v])=>{
+        const abs=Math.abs(v);
+        const pct=(abs/maxAbs*100).toFixed(0);
+        const clr=abs>0.5?'#f472b6':abs>0.3?'var(--warn)':'var(--muted)';
+        const sign=v>=0?'+':'';
+        return `<tr>
+          <td style="font-weight:700;color:var(--text)">${k}</td>
+          <td style="color:${clr};font-weight:700">${sign}${v.toFixed(4)}</td>
+          <td><div class="corr-bar" style="width:${pct}px;background:${clr}"></div> <span style="font-size:9px;color:${clr}">${(abs*100).toFixed(1)}%</span></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+function renderValueWeightBars(weights, corrs) {
+  const el = document.getElementById('valueWeightBars');
+  const note = document.getElementById('valueWeightNote');
+  if(!el) return;
+  const entries = Object.entries(weights).sort((a,b)=>b[1]-a[1]);
+  const colors = { DropHigh:'#f472b6', Drawdown:'var(--danger)', RSILow:'var(--warn)', SlopeRec:'var(--acc)', GroupRS:'var(--muted)' };
+  el.innerHTML = entries.map(([k,v])=>{
+    const pct = (v*100).toFixed(1);
+    const corr = corrs[k] || 0;
+    const corrSign = corr>=0?'+':'';
+    return `<div class="w-bar-row">
+      <div class="w-lbl">${k}</div>
+      <div class="w-track">
+        <div class="w-fill" style="width:${pct}%;background:${colors[k]||'#f472b6'}"></div>
+      </div>
+      <div class="w-val" style="color:${colors[k]||'#f472b6'}">${pct}%</div>
+      <div class="w-corr">r=${corrSign}${corr.toFixed(3)}</div>
+    </div>`;
+  }).join('');
+  if(note) note.textContent = `Total: ${(Object.values(weights).reduce((s,v)=>s+v,0)*100).toFixed(1)}% · ค่าคำนวณอัตโนมัติจากข้อมูลจริง (ไม่ปรับ manual ได้เหมือน Momentum)`;
+}
+
 function renderWeightBars() {
   const entries = Object.entries(mlWeights);
   const colors = {RSI:'var(--danger)',Heat:'var(--warn)',pct50:'var(--acc2)',EMAMom:'var(--purple)',Score:'var(--teal)',GroupRS:'var(--muted)',Slope:'var(--acc)'};
@@ -2352,7 +2396,14 @@ function buildMLConfigJSON() {
 async function exportMLConfig() {
   const json = buildMLConfigJSON();
 
-  // Save ขึ้น Supabase ก่อน — insert อย่างเดียว (trigger ensure_single_active_ml_config
+  // Download เหมือนเดิม
+  const blob = new Blob([json], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+
+  // Save ขึ้น Supabase — insert อย่างเดียว (trigger ensure_single_active_ml_config
   // ปิด row เก่าให้อัตโนมัติแบบ atomic ใน transaction เดียวกับ insert)
   const btn = document.getElementById('exportBtn');
   const origTxt = btn.textContent;
@@ -2398,16 +2449,6 @@ async function exportMLConfig() {
   } catch(checkErr) {
     console.warn('[exportMLConfig] ตรวจสอบสถานะไม่ได้:', checkErr);
   }
-
-  // Download ไฟล์ backup ทีหลังสุด — ย้ายมาไว้หลัง network calls ทั้งหมดเสร็จแล้ว
-  // (เดิม trigger download ก่อน fetch ซึ่งบน Safari/iPadOS การเปิด download sheet อาจทำให้
-  // แท็บถูกมองว่า background ชั่วขณะ แล้ว fetch ที่กำลังรอ response โดนตัดจบด้วย "Load failed"
-  // ย้ายมาไว้ท้ายสุดแบบเดียวกับ trainValueModel ที่ไม่เจอปัญหานี้เลย)
-  const blob = new Blob([json], {type:'application/json'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `ml_config_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
 
   if(actuallySaved) {
     btn.textContent = '✅ Saved to Supabase!';
@@ -3361,155 +3402,8 @@ P&L: ${pnlTxt}
 
 /* ============================================================ STOCK LATEST TAB */
 let slFilterAction = 'ALL';
-let slFilterRotation = 'ALL';
-
-// หมวด Rotation ของหุ้น ใช้ mlGroupRegime ตัวเดียวกับที่ column "Rotation" ใช้แสดงผล
-// เพื่อให้ filter กับสิ่งที่เห็นในตารางตรงกันเป๊ะ (ไม่มี logic ซ้อนสองชุด)
-function rotationCategory(r) {
-  const grInfo = mlGroupRegime[r.group];
-  if(grInfo?.label === 'UP')   return 'Rotate IN';
-  if(grInfo?.label === 'DOWN') return 'Rotate OUT';
-  return 'FLAT';
-}
-
-/* ============================================================ 7-DAY PERFORMANCE CHART
-   ใช้ allRows ที่มีอยู่แล้ว (ไม่ query เพิ่ม) หาราคาล่าสุด vs ราคา ~7 วันก่อนหน้า
-   ต่อ symbol แล้ว plot เป็น diverging horizontal bar chart (เรียงมาก→น้อย, เขียว=บวก, แดง=ลบ)
-   Fail gracefully ตามหลักการออกแบบระบบ: symbol ไหนข้อมูลย้อนหลังไม่ถึง 7 วัน ข้ามไปเงียบๆ ไม่ error
-*/
-/* ============================================================ N-DAY PERFORMANCE CHART
-   ใช้ allRows ที่มีอยู่แล้ว (ไม่ query เพิ่ม) หาราคาล่าสุด vs ราคา ~N วันก่อนหน้า
-   ต่อ symbol แล้ว plot เป็น diverging horizontal bar chart (เรียงมาก→น้อย, เขียว=บวก, แดง=ลบ)
-   Fail gracefully ตามหลักการออกแบบระบบ: symbol ไหนข้อมูลย้อนหลังไม่ถึง N วัน ข้ามไปเงียบๆ ไม่ error
-   รองรับหลาย timeframe (7D/30D ฯลฯ) ผ่านตัวแปร perfChartDays เดียว ไม่ต้องแยกฟังก์ชันซ้ำ
-*/
-let perfChartDays = 7;
-
-// หาช่วงวันที่จริงที่มีอยู่ใน allRows ทั้งระบบ (ไม่แยกตาม symbol) — ไว้บอกผู้ใช้ตรงๆ ว่า
-// ข้อมูลย้อนหลังมีกี่ "วันปฏิทิน" จริง ต่างจาก "จำนวน rows" ที่นับรวมหลาย session/วันไปด้วย
-function dataCoverageDays() {
-  if(!allRows.length) return null;
-  const keys = allRows.map(r => dtKey(r).slice(0,10)).filter(Boolean);
-  if(!keys.length) return null;
-  let minKey = keys[0], maxKey = keys[0];
-  keys.forEach(k => { if(k<minKey) minKey=k; if(k>maxKey) maxKey=k; });
-  const [y1,m1,d1] = minKey.split('-').map(Number);
-  const [y2,m2,d2] = maxKey.split('-').map(Number);
-  const days = Math.round((new Date(y2,m2-1,d2) - new Date(y1,m1-1,d1)) / 86400000);
-  return { minKey, maxKey, days };
-}
-
-function computeNDayPerf(days) {
-  const bySym = {};
-  allRows.forEach(r => {
-    if(!r.symbol || !(r.price > 0)) return;
-    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
-  });
-
-  const out = [];
-  Object.entries(bySym).forEach(([sym, rows]) => {
-    rows.sort((a,b) => { const ka=dtKey(a), kb=dtKey(b); return ka>kb?1:(ka<kb?-1:0); });
-    const latest = rows[rows.length-1];
-    const latestDateStr = dtKey(latest).slice(0,10); // YYYY-MM-DD (dtKey normalize format ให้แล้ว)
-    const [ly,lm,ld] = latestDateStr.split('-').map(Number);
-    const targetDateObj = new Date(ly, lm-1, ld);
-    targetDateObj.setDate(targetDateObj.getDate()-days);
-    const targetKey = targetDateObj.getFullYear()+'-'+String(targetDateObj.getMonth()+1).padStart(2,'0')+'-'+String(targetDateObj.getDate()).padStart(2,'0');
-
-    // หา snapshot ที่ใกล้ targetKey ที่สุด (วันที่ <= targetKey, เอาตัวล่าสุดในช่วงนั้น)
-    let pastRow = null;
-    for(let i=rows.length-1;i>=0;i--){
-      if(dtKey(rows[i]).slice(0,10) <= targetKey){ pastRow = rows[i]; break; }
-    }
-    if(!pastRow || !(pastRow.price > 0)) return; // ข้อมูลย้อนหลังไม่พอ — ข้ามตัวนี้ (ไม่ block ตัวอื่น)
-
-    const pct = (latest.price - pastRow.price) / pastRow.price * 100;
-    out.push({ symbol: sym, group: latest.group||'', pct, latestDate: latestDateStr, pastDate: dtKey(pastRow).slice(0,10) });
-  });
-
-  out.sort((a,b) => b.pct - a.pct);
-  return out;
-}
-
-function setPerfChartDays(days) {
-  perfChartDays = days;
-  renderPerfChart();
-}
-
-function renderPerfChart() {
-  // filter bar (7D / 30D) — pattern เดียวกับ Filter/Rotation ด้านล่าง
-  const opts = [{d:7,label:'7D'},{d:14,label:'14D'},{d:30,label:'30D'}];
-  const fb = document.getElementById('perfChartFilterBar');
-  if(fb) {
-    fb.innerHTML = opts.map(o=>`<button class="fb ${o.d===perfChartDays?'on':''}" onclick="setPerfChartDays(${o.d})">${o.label}</button>`).join('');
-  }
-  const titleEl = document.getElementById('perfChartTitle');
-  if(titleEl) titleEl.textContent = perfChartDays + '-Day';
-  const daysLabelEl = document.getElementById('perfChartDaysLabel');
-  if(daysLabelEl) daysLabelEl.textContent = perfChartDays;
-
-  const covEl = document.getElementById('perfChartCoverage');
-  if(covEl) {
-    const cov = dataCoverageDays();
-    if(!cov) {
-      covEl.textContent = '';
-    } else {
-      const insufficient = cov.days < perfChartDays;
-      covEl.style.color = insufficient ? 'var(--warn)' : 'var(--muted)';
-      covEl.textContent = `· ข้อมูลย้อนหลังทั้งระบบ: ${cov.days} วัน (${cov.minKey} → ${cov.maxKey})`
-        + (insufficient ? ` — ยังไม่ถึง ${perfChartDays} วัน` : '');
-    }
-  }
-
-  const wrap = document.getElementById('sevenDayChartWrap');
-  if(!wrap) return;
-  const data = computeNDayPerf(perfChartDays);
-
-  if(data.length === 0) {
-    wrap.innerHTML = `<div style="padding:12px;color:var(--muted);font-family:var(--mono);font-size:11px;">ยังไม่มีหุ้นตัวไหนมีข้อมูลย้อนหลังครบ ${perfChartDays} วัน — รอสะสมข้อมูลเพิ่มก่อนครับ</div>`;
-    return;
-  }
-
-  const rowH = 15, gap = 3, rowStep = rowH+gap;
-  const labelW = 130, padTop = 6, padBottom = 24, chartW = 460, rightPad = 70;
-  const totalW = labelW + chartW + rightPad;
-  const totalH = padTop + data.length*rowStep + padBottom;
-
-  const maxAbs = Math.max(...data.map(d=>Math.abs(d.pct)), 0.5);
-  const axisMax = Math.max(0.5, Math.ceil(maxAbs*2)/2); // ปัดขึ้นทีละ 0.5 ให้แกนอ่านง่าย
-
-  let gridlines = '';
-  const steps = 4;
-  for(let s=0;s<=steps;s++){
-    const gx = labelW + (chartW/steps)*s;
-    const val = (axisMax/steps)*s;
-    gridlines += `<line x1="${gx}" y1="${padTop}" x2="${gx}" y2="${padTop+data.length*rowStep-gap}" stroke="rgba(255,255,255,.07)" stroke-width="1"></line>
-      <text x="${gx}" y="${padTop+data.length*rowStep-gap+16}" text-anchor="middle" style="font-family:var(--mono);font-size:9px;fill:var(--muted);">${val.toFixed(1)}%</text>`;
-  }
-
-  let bars = '';
-  data.forEach((d,i) => {
-    const y = padTop + i*rowStep;
-    const w = Math.max((Math.abs(d.pct)/axisMax) * chartW, 1);
-    const isPos = d.pct >= 0;
-    const opacity = (0.35 + 0.65*(Math.abs(d.pct)/axisMax)).toFixed(2);
-    const fill = isPos ? `rgba(0,255,178,${opacity})` : `rgba(244,67,54,${opacity})`;
-    const valColor = isPos ? '#4ade80' : '#f87171';
-    bars += `
-      <text x="${labelW-8}" y="${y+rowH*0.78}" text-anchor="end" style="font-family:var(--mono);font-size:10px;fill:var(--text);">${d.symbol}</text>
-      <rect x="${labelW}" y="${y}" width="${w}" height="${rowH}" fill="${fill}" rx="2"></rect>
-      <text x="${labelW+w+6}" y="${y+rowH*0.78}" style="font-family:var(--mono);font-size:10px;font-weight:700;fill:${valColor};">${isPos?'+':''}${d.pct.toFixed(2)}%</text>
-    `;
-  });
-
-  wrap.innerHTML = `<svg viewBox="0 0 ${totalW} ${totalH}" width="100%" style="max-width:${totalW}px;display:block;">
-    ${gridlines}
-    ${bars}
-  </svg>`;
-}
 
 function renderStockLatest() {
-  renderPerfChart();
   const latest = getLatest();
   const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
   latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
@@ -3541,34 +3435,6 @@ function renderStockLatest() {
     return `<button class="fb ${a===slFilterAction?'on':''}" onclick="setSLFilter('${a}')">${a} <span style="opacity:.65;font-size:8px">(${cnt})</span></button>`;
   }).join('');
 
-  // Rotation filter buttons พร้อม count — ใช้ rotationCategory() ตัวเดียวกับที่ column แสดงผล
-  const rotationCounts = { 'Rotate IN':0, 'Rotate OUT':0, 'FLAT':0 };
-  latest.forEach(r=>{ rotationCounts[rotationCategory(r)]++; });
-  const rotationOpts = [
-    {key:'ALL',        label:'ALL'},
-    {key:'Rotate IN',  label:'🔃 Rotate IN'},
-    {key:'Rotate OUT', label:'⚠️ Rotate OUT'},
-    {key:'FLAT',       label:'— Flat'},
-  ];
-  document.getElementById('slFilterBarRotation').innerHTML = rotationOpts.map(o=>{
-    const cnt = o.key==='ALL' ? latest.length : (rotationCounts[o.key]||0);
-    return `<button class="fb ${o.key===slFilterRotation?'on':''}" onclick="setSLFilterRotation('${o.key}')">${o.label} <span style="opacity:.65;font-size:8px">(${cnt})</span></button>`;
-  }).join('');
-
-  renderSLRows(latest);
-}
-
-function setSLFilterRotation(a) {
-  slFilterRotation = a;
-  document.querySelectorAll('#slFilterBarRotation .fb').forEach(b=>{
-    // เทียบจาก data key แทน textContent เพราะ label มี emoji/spacing ต่างจาก key
-    const key = b.getAttribute('onclick').match(/setSLFilterRotation\('(.+?)'\)/)[1];
-    b.classList.toggle('on', key===a);
-  });
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
-  latest.sort((a,b)=>b._comp-a._comp);
   renderSLRows(latest);
 }
 
@@ -3601,13 +3467,12 @@ function renderSLRows(latest) {
     if(slFilterAction!=='ALL') {
       if(r.action !== slFilterAction) return false;
     }
-    if(slFilterRotation!=='ALL' && rotationCategory(r)!==slFilterRotation) return false;
     if(search && !r.symbol.includes(search) && !r.group.toUpperCase().includes(search)) return false;
     return true;
   });
 
   document.getElementById('slBody').innerHTML = filtered.length===0
-    ? `<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่พบข้อมูล</td></tr>`
+    ? `<tr><td colspan="13" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่พบข้อมูล</td></tr>`
     : filtered.map((r,i)=>{
         const comp = r._comp;
         const cClr = compClr(comp);
@@ -3626,13 +3491,6 @@ function renderSLRows(latest) {
         const hs = healthScore(r, ts.slope);
         const hsClr = hs>=40?'var(--acc)':hs>=0?'var(--warn)':'var(--danger)';
         const hsTxt = hs>=40?'✅':'⚠️';
-        // Sector Rotation badge — ใช้ rotationCategory() ตัวเดียวกับที่ filter ใช้ (single source of truth)
-        const rotCat = rotationCategory(r);
-        const rotBadge = rotCat === 'Rotate IN'
-          ? `<span style="background:#14532d;color:#4ade80;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">🔃 Rotate IN</span>`
-          : rotCat === 'Rotate OUT'
-          ? `<span style="background:#450a0a;color:#f87171;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">⚠️ Rotate OUT</span>`
-          : `<span style="color:var(--muted);font-size:10px;">—</span>`;
         return `<tr>
           <td style="font-family:var(--mono);color:var(--muted);font-size:11px">${i+1}</td>
           <td><div class="sl-sym">${r.symbol}</div><div class="sl-grp">${r.group}</div></td>
@@ -3645,7 +3503,6 @@ function renderSLRows(latest) {
           <td style="font-family:var(--mono);font-weight:700;color:${cClr}">${comp}</td>
           <td style="font-family:var(--mono);font-size:10px;color:${hsClr}">${hsTxt} ${hs}<div style="font-size:9px;color:var(--muted)">${hs>=40?'trend ดี':hs>=0?'กลางๆ':'trend แย่'}</div></td>
           <td style="font-size:10px;color:${tsClr};white-space:nowrap">${ts.label}<div style="font-size:9px;color:var(--muted)">${ts.slope>0?'+':''}${ts.slope} pts</div></td>
-          <td>${rotBadge}</td>
           <td><select onchange="setActualAction('${slKey}',this.value)" style="font-family:var(--mono);font-size:10px;padding:4px 8px;background:#1a1a2e;border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:3px;outline:none;cursor:pointer;">${slOpts}</select></td>
           <td>
             <span class="score-pill" style="background:${pillBg};border-color:${pillBrd};color:${cClr}">
@@ -3878,7 +3735,6 @@ async function exportStockLatestCSV(mode) {
   const search = (document.getElementById('slSearch')?.value||'').toUpperCase().trim();
   let filtered = latest.filter(r=>{
     if(slFilterAction!=='ALL' && r.action!==slFilterAction) return false;
-    if(slFilterRotation!=='ALL' && rotationCategory(r)!==slFilterRotation) return false;
     if(search && !r.symbol.includes(search) && !r.group.toUpperCase().includes(search)) return false;
     return true;
   });
