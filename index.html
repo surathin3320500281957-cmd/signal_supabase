@@ -388,7 +388,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
   <button class="tab-btn" onclick="switchTab('stocklatest')">📊 สรุป Stock ล่าสุด</button>
   <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
-  <button class="tab-btn" onclick="switchTab('summary')">📋 Summary History</button>
 </div>
 
 <!-- TAB 1: SIGNAL MATRIX -->
@@ -472,11 +471,12 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 
   <div id="portActionNote" style="margin-top:14px;font-family:var(--mono);font-size:9px;color:var(--muted);
     background:rgba(255,255,255,.03);border-radius:4px;padding:10px 14px;line-height:2;">
-    📊 <span style="color:var(--acc)">Upside สูง (Score ต่ำ)</span> = โอกาสเข้าใหม่ ·
+    📊 <span style="color:var(--acc)">Upside สูง</span> = ยังห่างเป้าหมาย มี room เยอะ (RSI ยังไม่ร้อน) ·
     <span style="color:var(--warn)">Upside กลาง</span> = ถือต่อ ·
-    <span style="color:var(--tp)">Upside ต่ำ (Score สูง)</span> = พิจารณาออก ·
+    <span style="color:var(--tp)">Upside ต่ำ</span> = ใกล้เป้าหมายแล้ว/RSI ร้อน พิจารณาออก ·
     <span style="color:var(--danger)">🔴 SL hit</span> = ออกทันที หาตัวใหม่
     <span id="mlThreshNote" style="color:var(--purple)"></span>
+    <br>💡 Upside = % ที่ราคายังห่างจาก Target (คำนวณจาก RSI+Risk เหมือนสูตรฝั่ง frontend) ไม่ใช่ ML Score
   </div>
 </main>
 </div>
@@ -658,82 +658,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 </main>
 </div>
 
-<!-- TAB 5: SUMMARY HISTORY -->
-<div id="tab-summary" class="tab-content">
-<main>
-  <div class="sec">Summary History · Validate ML ด้วยตาเอง</div>
-
-  <!-- Score Chart by Action -->
-  <div class="score-chart-wrap" id="scoreChartWrap">
-    <div class="score-chart-title">📊 คะแนนกำไร (Composite Score) แยกตาม Action</div>
-    <div id="scoreChartBody"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">โหลด summary...</div></div>
-    <div class="sc-legend">
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;width:100%">กรอบ = ML Zone ณ ตอน trade</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(0,255,178,.9)"></div>BUY ZONE (score &lt; 42)</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(255,193,7,.9)"></div>HOLD ZONE (42–68)</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(255,107,53,.9)"></div>PARTIAL ZONE (68–82)</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:transparent;border:2px solid rgba(244,67,54,.9)"></div>SELL ZONE (&gt; 82)</div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-top:6px;margin-bottom:4px;width:100%">พื้นหลัง = ผลลัพธ์จริง</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(41,182,246,.22);border:1px solid rgba(41,182,246,.4)"></div>WIN ✅</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(244,67,54,.22);border:1px solid rgba(244,67,54,.4)"></div>LOSS ❌</div>
-      <div class="sc-leg-item"><div class="sc-leg-color" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2)"></div>PENDING ⏳</div>
-    </div>
-  </div>
-
-  </div>
-
-  <!-- Accuracy mini charts -->
-  <div class="acc-chart-wrap" id="accChartWrap">
-    <div class="acc-mini-card">
-      <div class="acc-mini-title">Action Accuracy (จาก summary)</div>
-      <div id="summaryAccBars"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">โหลด summary จาก Sheet...</div></div>
-    </div>
-    <div class="acc-mini-card">
-      <div class="acc-mini-title">Distribution by Action</div>
-      <div id="summaryDist"><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">—</div></div>
-    </div>
-  </div>
-
-  <!-- Date range filter -->
-  <div class="sum-filter-row" style="margin-bottom:8px;">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">ช่วงวันที่</span>
-    <input type="date" id="sumDateFrom" onchange="filterSummary()" style="font-family:var(--mono);font-size:10px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;color-scheme:dark;">
-    <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">–</span>
-    <input type="date" id="sumDateTo" onchange="filterSummary()" style="font-family:var(--mono);font-size:10px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;color-scheme:dark;">
-    <button class="sum-fb" onclick="setDatePreset('7d')">7 วัน</button>
-    <button class="sum-fb" onclick="setDatePreset('30d')">30 วัน</button>
-    <button class="sum-fb" onclick="setDatePreset('mtd')">เดือนนี้</button>
-    <button class="sum-fb" onclick="setDatePreset('all')">ทั้งหมด</button>
-  </div>
-
-  <!-- Filters -->
-  <div class="sum-filter-row">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
-    <div id="sumActionFilter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-    <input id="sumSearch" type="text" placeholder="ค้นหา symbol..." oninput="filterSummary()">
-    <select id="sumOutcomeFilter" onchange="filterSummary()" style="font-family:var(--mono);font-size:9px;padding:5px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;">
-      <option value="ALL">All Outcome</option>
-      <option value="WIN">✅ Win</option>
-      <option value="LOSS">❌ Loss</option>
-      <option value="PENDING">⏳ Pending</option>
-    </select>
-    <span class="ml-status-txt" id="sumCount">—</span>
-  </div>
-
-  <div class="sum-table-wrap">
-    <table class="sum-table">
-      <thead><tr>
-        <th>วันที่</th><th>Symbol</th><th>AI Label</th><th>ทำจริง</th><th>ราคา</th><th>%P&L</th><th>Score ML</th><th>Outcome</th><th>หมายเหตุ</th>
-      </tr></thead>
-      <tbody id="sumBody"></tbody>
-    </table>
-  </div>
-
-
-
-
-</main>
-</div>
 
 </div><!-- end .app -->
 
@@ -819,7 +743,7 @@ const sb = {
 
 /* ============================================================ TABS */
 function switchTab(tab) {
-  const tabs = ['signal','portfolio','stocklatest','ml','summary'];
+  const tabs = ['signal','portfolio','stocklatest','ml'];
   tabs.forEach((t,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', t===tab);
     document.getElementById('tab-'+t).classList.toggle('active', t===tab);
@@ -827,7 +751,6 @@ function switchTab(tab) {
   if(tab==='portfolio') renderPortfolio();
   if(tab==='stocklatest') renderStockLatest();
   if(tab==='ml') renderMLPreview();
-  if(tab==='summary') renderSummaryTab();
 }
 
 /* ============================================================ STATE */
@@ -3111,11 +3034,18 @@ function renderPortfolio() {
     });
   }
 
-  // SL % ตาม Risk
+  // SL % ตาม Risk (ใช้เฉพาะคำนวณ SL PRICE column ของ backend เอง — ไม่แตะจุดนี้)
   const slPct = risk => risk==='LOW'?0.08:risk==='HIGH'?0.12:0.10;
 
-  // Upside = 100 - Composite Score (ยิ่ง score ต่ำ/ติดลบ upside ยิ่งสูง)
-  const upside = comp => +(Math.min(130, 100 - comp)).toFixed(1);
+  // Upside — คำนวณจากราคาจริง (ผ่าน Supabase ตัวเดียวกับที่ frontend เห็น) เทียบเป้าหมายจริง
+  // ใช้สูตรเดียวกับ R:R ฝั่ง frontend (RSI-based reward multiplier) เพื่อให้ตัวเลขตรงกันทั้ง 2 แอป
+  // ไม่ใช่ "100 - Composite Score" แบบเดิมที่ไม่เกี่ยวกับราคา/เป้าหมายจริงเลย
+  const upsideSlPct = risk => risk==='LOW' ? 0.03 : 0.05; // ตรงกับ frontend
+  const upside = (rsiVal, risk) => {
+    const rsiSafe = (rsiVal==null || isNaN(rsiVal)) ? 50 : rsiVal;
+    const rewardMult = Math.max(0.3, Math.min(6, 3 - (rsiSafe - 50) * 0.1));
+    return +(upsideSlPct(risk) * 100 * rewardMult).toFixed(1); // = (target-price)/price*100 จริง
+  };
 
   const holdings = Object.keys(portMap).map(sym => {
     const cost  = portMap[sym];
@@ -3126,7 +3056,7 @@ function renderPortfolio() {
     const risk  = stock?.risk||'MEDIUM';
     const slPrice  = cost>0 ? +(cost*(1-slPct(risk))).toFixed(2) : null;
     const slHit    = slPrice!==null && price>0 && price<=slPrice;
-    const upsideVal = upside(comp);
+    const upsideVal = upside(stock?.rsi, risk);
     const ts = trendSlope(sym, maxPct50);
     const hs = stock ? healthScore(stock, ts.slope) : 0;
     const ms = stock ? momentumScore(stock) : 0;
@@ -3154,7 +3084,7 @@ function renderPortfolio() {
   document.getElementById('portSummary').innerHTML=[
     {l:'ถือทั้งหมด',    v:`${holdings.length} ตัว`, c:'var(--acc)'},
     {l:'Avg P&L',       v:`${avgPnl}%`,              c:parseFloat(avgPnl)>=0?'var(--acc)':'var(--danger)'},
-    {l:'Avg Upside',    v:`${avgUpside}%`,            c:parseInt(avgUpside)>50?'var(--acc)':parseInt(avgUpside)>30?'var(--warn)':'var(--tp)'},
+    {l:'Avg Upside',    v:`${avgUpside}%`,            c:parseInt(avgUpside)>15?'var(--acc)':parseInt(avgUpside)>8?'var(--warn)':'var(--tp)'},
     {l:'SL Alert',      v:slCount>0?`🔴 ${slCount} ตัว`:'✅ ปลอดภัย', c:slCount>0?'var(--danger)':'var(--acc)'},
   ].map(k=>`<div class="port-kpi">
     <div class="port-kpi-lbl">${k.l}</div>
@@ -3162,7 +3092,7 @@ function renderPortfolio() {
   </div>`).join('');
 
   // Rotation Alert — ตัวที่ควร rotate ออก
-  const rotateOut = holdings.filter(h=>h.upsideVal<30||h.slHit).sort((a,b)=>a.upsideVal-b.upsideVal);
+  const rotateOut = holdings.filter(h=>h.upsideVal<8||h.slHit).sort((a,b)=>a.upsideVal-b.upsideVal);
   const rotAlert  = document.getElementById('rotationAlert');
   const rotBody   = document.getElementById('rotationBody');
   if(rotateOut.length>0){
@@ -3210,7 +3140,7 @@ function renderPortfolio() {
   document.getElementById('portBody').innerHTML = holdings.length===0
     ?`<tr><td colspan="12" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่มีข้อมูลใน Portfolio</td></tr>`
     :holdings.sort((a,b)=>b.upsideVal-a.upsideVal).map(h=>{
-      const uClr = h.upsideVal>=60?'var(--acc)':h.upsideVal>=35?'var(--warn)':'var(--tp)';
+      const uClr = h.upsideVal>=15?'var(--acc)':h.upsideVal>=8?'var(--warn)':'var(--tp)';
       const rowStyle = h.slHit?'background:rgba(244,67,54,.06);border-left:2px solid var(--danger);':'';
       const slTxt = h.slPrice
         ?`<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:${h.slHit?'var(--danger)':'var(--muted)'}">
@@ -3273,8 +3203,8 @@ function renderPortfolio() {
   document.getElementById('swapBody').innerHTML = swapCandidates.length===0
     ?`<div style="font-family:var(--mono);font-size:10px;color:var(--muted);padding:10px">ยังไม่มีโอกาสใหม่ที่ดีพอ</div>`
     :swapCandidates.map((r,i)=>{
-      const uVal = upside(r._comp);
-      const uClr = uVal>=60?'var(--acc)':uVal>=40?'var(--warn)':'var(--tp)';
+      const uVal = upside(r.rsi, r.risk);
+      const uClr = uVal>=15?'var(--acc)':uVal>=8?'var(--warn)':'var(--tp)';
       const isTop = i===0;
       return `<div class="swap-card ${isTop?'top':''}">
         ${isTop?`<div class="swap-badge" style="background:rgba(0,255,178,.15);color:var(--acc);border:1px solid rgba(0,255,178,.3)">⭐ TOP PICK</div>`:''}
