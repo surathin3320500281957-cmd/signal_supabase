@@ -2880,8 +2880,9 @@ function renderAll() {
   setTimeout(buildSymFilter,0);
   // render Stock Latest tab ทุกครั้งที่ข้อมูลเปลี่ยน
   renderStockLatest();
-  // render Summary tab ล่วงหน้า ไม่ต้องรอกด tab
-  renderSummaryTab();
+  // หมายเหตุ: เคยมี renderSummaryTab() เรียกตรงนี้ (pre-render ล่วงหน้า)
+  // แต่ตอนนี้ถอด tab Summary History ออกแล้ว ไม่มี DOM element ให้ render ใส่
+  // (renderAccBars/parseSummaryRows/computeAccuracy ที่ ML Analyzer ใช้ยังทำงานปกติ เรียกจากจุดอื่นแยกต่างหาก)
 }
 
 /* ============================================================ FILTERS */
