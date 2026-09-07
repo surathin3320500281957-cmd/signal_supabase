@@ -1325,6 +1325,56 @@ function pctFromHigh(symbol) {
   return { drop, high, current };
 }
 
+/* ============================================================ MOMENTUM PEAK SINCE HOT
+   ฟังก์ชันใหม่แยกต่างหาก — ไม่แตะ pctFromHigh()/portfolioAction() เดิมที่ทำงานอยู่แล้ว
+   (README ข้อ 6: เช็คก่อนแก้ของเดิมที่มีคนพึ่งอยู่ — ตัวนี้เพิ่มคู่ขนานไว้ก่อน เทียบผลได้)
+
+   หาจุด "peak" (RSI สูงสุด + ราคาสูงสุด) นับตั้งแต่ครั้งล่าสุดที่ RSI ข้ามขึ้นเหนือ
+   hotRsiThreshold (default 70 — เกณฑ์เดียวกับปุ่ม 🔥 ร้อนเกินใน Screener ตามที่ตกลงกัน)
+   ต่างจาก pctFromHigh ที่ lookback 10 session ตายตัว — ตัวนี้เริ่มนับจากจุด "เข้าเขตร้อน"
+   จริง ไม่ว่าจะนานแค่ไหน (ยาวได้ถ้าร้อนต่อเนื่อง สั้นได้ถ้าเพิ่งข้ามมา)
+
+   คืนค่า null ถ้าตอนนี้ RSI ยังไม่ถึงเกณฑ์ร้อน (ไม่ต้อง track peak เพราะยังไม่เข้าเขต)
+*/
+function momentumPeakSince(symbol, hotRsiThreshold = 70) {
+  const rows = allRows
+    .filter(r => r.symbol === symbol && r.price > 0 && r.rsi != null && !isNaN(r.rsi))
+    .sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+  if(rows.length === 0) return null;
+
+  const latest = rows[rows.length - 1];
+  if((latest.rsi || 0) < hotRsiThreshold) return null; // ยังไม่เข้าเขตร้อน — ไม่ต้อง track
+
+  // หาจุดที่ RSI ข้ามจาก <threshold ขึ้นไป >=threshold ครั้งล่าสุด (นับถอยจากท้ายมา)
+  let startIdx = 0; // default: ร้อนมาตั้งแต่มีข้อมูลแรกสุดเท่าที่เก็บไว้
+  for(let i = rows.length - 1; i > 0; i--) {
+    if((rows[i-1].rsi || 0) < hotRsiThreshold && (rows[i].rsi || 0) >= hotRsiThreshold) {
+      startIdx = i;
+      break;
+    }
+  }
+
+  const win = rows.slice(startIdx);
+  let peakRsiRow = win[0], peakPriceRow = win[0];
+  win.forEach(r => {
+    if((r.rsi || 0) > (peakRsiRow.rsi || 0)) peakRsiRow = r;
+    if((r.price || 0) > (peakPriceRow.price || 0)) peakPriceRow = r;
+  });
+
+  return {
+    symbol,
+    hot_threshold: hotRsiThreshold,
+    since_date: dtKey(win[0]).slice(0, 10),
+    sessions_in_window: win.length,
+    peak_rsi: peakRsiRow.rsi,
+    peak_rsi_date: dtKey(peakRsiRow).slice(0, 10),
+    peak_price: peakPriceRow.price,
+    peak_price_date: dtKey(peakPriceRow).slice(0, 10),
+    current_rsi: latest.rsi,
+    current_price: latest.price,
+  };
+}
+
 function composite(r, maxPct50) {
   const w = mlWeights;
   const rsiN=Math.max(0,(r.rsi-30)/70);
@@ -3492,10 +3542,14 @@ function computeNDayHighLow(days) {
 }
 
 // ============================================================
-// 📤 ส่ง High/Low 14 วัน ไป Supabase — ให้ frontend อ่านต่อได้ (pattern เดียวกับ exportMLConfig)
+// 📤 ส่ง High/Low 14 วัน + Momentum Peak ไป Supabase — ให้ frontend อ่านต่อได้ (pattern เดียวกับ exportMLConfig)
 // ตั้งใจ hardcode 14 วันตายตัว ไม่ผูกกับปุ่ม 7D/14D/30D ที่ใช้ดูตาราง (คนละหน้าที่กัน)
 // ระบบใช้ 14 วันอย่างเดียวตามที่ตกลง จึงไม่ต้องกังวลเรื่อง config หลายช่วงชนกันใน Supabase
 // เก็บใน ml_config เดิม โดยตั้ง config_type='pricerange' แยกจาก 'backend'/'value' ที่มีอยู่แล้ว
+//
+// เพิ่ม momentum_peaks (เฟส 2) — เฉพาะ symbol ที่ RSI ปัจจุบัน ≥70 (momentumPeakSince คืนค่า
+// null ตัวอื่นอัตโนมัติอยู่แล้ว) เป็น "ฐานนิ่ง" ให้ frontend เอาไปเทียบกับ peak สดที่ตัวเองเห็น
+// (frontend จะทำ max(ฐานนิ่งจากตรงนี้, peak สดของตัวเอง) — ไม่ใช่เชื่อค่านี้เพียงอย่างเดียว)
 // ============================================================
 async function sendPriceRangeToSupabase() {
   const btn = document.getElementById('sendPriceRangeBtn');
@@ -3506,6 +3560,10 @@ async function sendPriceRangeToSupabase() {
   const days = 14; // hardcode ตายตัว — ไม่อ่านจาก perfChartDays ที่ผูกกับปุ่มดูตารางด้านบน
   const data = computeNDayHighLow(days);
   const versionKey = `pricerange-${days}d-` + new Date().toISOString().slice(0,19).replace(/[:T]/g,'');
+
+  const peaks = data
+    .map(d => momentumPeakSince(d.symbol)) // null ถ้า RSI ปัจจุบันยังไม่ถึง 70 — กรองทิ้งด้านล่าง
+    .filter(p => p !== null);
 
   const payload = {
     days,
@@ -3519,6 +3577,7 @@ async function sendPriceRangeToSupabase() {
       from_high_pct: +d.fromHighPct.toFixed(2),
       from_low_pct: +d.fromLowPct.toFixed(2),
     })),
+    momentum_peaks: peaks, // เฉพาะตัวที่กำลังร้อน (RSI≥70) — ใช้เป็นฐานอ้างอิง SL/TP-trailing ฝั่ง frontend
   };
 
   let saveErr = null;
@@ -3534,7 +3593,7 @@ async function sendPriceRangeToSupabase() {
         normalize:    {},
         correlations: {},
         group_regime: {},
-        note:         `High/Low ${days} วัน · ${data.length} symbols`,
+        note:         `High/Low ${days} วัน · ${data.length} symbols · ${peaks.length} momentum peaks (RSI≥70)`,
         is_active:    true,
         trained_at:   payload.generated,
       }]),
