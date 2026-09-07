@@ -498,6 +498,13 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
     * คำนวณจากราคาล่าสุด เทียบราคา ~<span id="perfChartDaysLabel">7</span> วันก่อนหน้า (snapshot ที่ใกล้ที่สุด) · ตัวที่ยังไม่มีข้อมูลย้อนหลังครบจะไม่แสดงในกราฟนี้
   </div>
+
+  <!-- N-Day High/Low table — ใช้ตัวเลือกวัน (7D/14D/30D) ร่วมกับกราฟด้านบน -->
+  <div class="sec" style="margin-top:4px;">🎯 ราคาปัจจุบัน / สูงสุด / ต่ำสุด — <span id="hlDaysLabel">7</span> วันล่าสุด</div>
+  <div id="highLowTableWrap" style="overflow-x:auto;padding:8px 0 14px 0;"></div>
+  <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
+    * สูงสุด/ต่ำสุดคำนวณจากทุก session ที่มีจริงในช่วงที่เลือก ไม่ใช่แค่จุดต้น-จุดปลาย · "ห่าง High/Low" คือระยะจากราคาปัจจุบัน (ใช้ประกอบการดูจุดซื้อขาย ไม่ใช่คำสั่งซื้อขาย)
+  </div>
   <div class="div"></div>
 
   <!-- Filter + search + export row -->
@@ -3421,9 +3428,104 @@ function computeNDayPerf(days) {
   return out;
 }
 
+// ============================================================
+// 🎯 High/Low N-Day — ราคาปัจจุบัน/สูงสุด/ต่ำสุด ในช่วงที่เลือก (ต่างจาก computeNDayPerf
+// ที่เทียบแค่จุดต้น-จุดปลาย ตัวนี้ไล่ดูทุก session ในช่วงจริงแล้วหา max/min ของราคา)
+// เป้าหมาย: ใช้เป็นข้อมูลอ้างอิงจุดซื้อขายที่ frontend ต่อไป (ตามที่ผู้ใช้ระบุไว้)
+// ============================================================
+function computeNDayHighLow(days) {
+  const bySym = {};
+  allRows.forEach(r => {
+    if(!r.symbol || !(r.price > 0)) return;
+    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+  });
+
+  const out = [];
+  Object.entries(bySym).forEach(([sym, rows]) => {
+    rows.sort((a,b) => { const ka=dtKey(a), kb=dtKey(b); return ka>kb?1:(ka<kb?-1:0); });
+    const latest = rows[rows.length-1];
+    const latestDateStr = dtKey(latest).slice(0,10);
+    const [ly,lm,ld] = latestDateStr.split('-').map(Number);
+    const cutoffObj = new Date(ly, lm-1, ld);
+    cutoffObj.setDate(cutoffObj.getDate() - days);
+    const cutoffKey = cutoffObj.getFullYear()+'-'+String(cutoffObj.getMonth()+1).padStart(2,'0')+'-'+String(cutoffObj.getDate()).padStart(2,'0');
+
+    // เอาทุก session ที่อยู่ในช่วง [cutoffKey, latestDateStr] จริง ไม่ใช่แค่ 2 จุดปลาย
+    const windowRows = rows.filter(r => {
+      const k = dtKey(r).slice(0,10);
+      return k >= cutoffKey && k <= latestDateStr;
+    });
+    if(!windowRows.length) return; // ไม่มีข้อมูลในช่วงนี้เลย — ข้าม (ไม่ block ตัวอื่น)
+
+    let highRow = windowRows[0], lowRow = windowRows[0];
+    windowRows.forEach(r => {
+      if(r.price > highRow.price) highRow = r;
+      if(r.price < lowRow.price)  lowRow  = r;
+    });
+
+    const uniqueDays = new Set(windowRows.map(r => dtKey(r).slice(0,10))).size;
+
+    out.push({
+      symbol: sym,
+      group: latest.group || '',
+      current: latest.price,
+      currentDate: latestDateStr,
+      high: highRow.price,
+      highDate: dtKey(highRow).slice(0,10),
+      low: lowRow.price,
+      lowDate: dtKey(lowRow).slice(0,10),
+      coverageDays: uniqueDays, // จำนวนวันจริงที่มีข้อมูลในช่วงนี้ (อาจน้อยกว่า days ที่เลือกถ้าข้อมูลยังสะสมไม่ครบ)
+      fromHighPct: highRow.price > 0 ? (latest.price - highRow.price) / highRow.price * 100 : 0, // ≤0 เสมอ
+      fromLowPct:  lowRow.price  > 0 ? (latest.price - lowRow.price)  / lowRow.price  * 100 : 0, // ≥0 เสมอ
+    });
+  });
+
+  out.sort((a,b) => a.symbol.localeCompare(b.symbol));
+  return out;
+}
+
+function renderHighLowTable() {
+  const labelEl = document.getElementById('hlDaysLabel');
+  if(labelEl) labelEl.textContent = perfChartDays;
+
+  const wrap = document.getElementById('highLowTableWrap');
+  if(!wrap) return;
+  const data = computeNDayHighLow(perfChartDays);
+
+  if(data.length === 0) {
+    wrap.innerHTML = `<div style="padding:12px;color:var(--muted);font-family:var(--mono);font-size:11px;">ยังไม่มีข้อมูลในช่วง ${perfChartDays} วันนี้ — รอสะสมข้อมูลเพิ่มก่อนครับ</div>`;
+    return;
+  }
+
+  const rows = data.map(d => {
+    const insufficient = d.coverageDays < Math.min(perfChartDays, 3); // ข้อมูลน้อยมาก (กันเข้าใจผิดว่า high/low นิ่งแล้ว)
+    const nearHigh = d.fromHighPct >= -2; // ห่าง high ไม่ถึง 2% — ใกล้จุดสูงสุดของรอบ
+    const nearLow  = d.fromLowPct  <= 2;  // ห่าง low ไม่ถึง 2% — ใกล้จุดต่ำสุดของรอบ
+    return `<tr>
+      <td style="font-weight:700;">${d.symbol}<br><span style="font-size:9px;color:var(--muted);font-weight:400;">${d.group}</span></td>
+      <td>$${d.current.toFixed(2)}<br><span style="font-size:9px;color:var(--muted);">${d.currentDate}</span></td>
+      <td style="color:${nearHigh?'var(--tp)':'var(--text)'};">$${d.high.toFixed(2)}<br><span style="font-size:9px;color:var(--muted);">${d.highDate}</span></td>
+      <td style="color:${nearLow?'var(--acc)':'var(--text)'};">$${d.low.toFixed(2)}<br><span style="font-size:9px;color:var(--muted);">${d.lowDate}</span></td>
+      <td style="color:${nearHigh?'var(--tp)':'var(--muted)'};font-weight:${nearHigh?700:400};">${d.fromHighPct.toFixed(1)}%</td>
+      <td style="color:${nearLow?'var(--acc)':'var(--muted)'};font-weight:${nearLow?700:400};">+${d.fromLowPct.toFixed(1)}%</td>
+      <td style="font-family:var(--mono);font-size:9px;color:${insufficient?'var(--warn)':'var(--muted)'};">${d.coverageDays} วัน${insufficient?' ⚠️':''}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="corr-table" style="min-width:760px;">
+      <thead><tr>
+        <th>SYMBOL</th><th>ราคาปัจจุบัน</th><th>สูงสุด</th><th>ต่ำสุด</th>
+        <th>ห่าง High</th><th>ห่าง Low</th><th>ข้อมูล</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function setPerfChartDays(days) {
   perfChartDays = days;
   renderPerfChart();
+  renderHighLowTable();
 }
 
 function renderPerfChart() {
@@ -3500,6 +3602,7 @@ function renderPerfChart() {
 
 function renderStockLatest() {
   renderPerfChart();
+  renderHighLowTable();
   const latest = getLatest();
   const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
   latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
