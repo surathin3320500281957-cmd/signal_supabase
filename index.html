@@ -500,10 +500,17 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   </div>
 
   <!-- N-Day High/Low table — ใช้ตัวเลือกวัน (7D/14D/30D) ร่วมกับกราฟด้านบน -->
-  <div class="sec" style="margin-top:4px;">🎯 ราคาปัจจุบัน / สูงสุด / ต่ำสุด — <span id="hlDaysLabel">7</span> วันล่าสุด</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px;">
+    <div class="sec" style="margin:0;">🎯 ราคาปัจจุบัน / สูงสุด / ต่ำสุด — <span id="hlDaysLabel">7</span> วันล่าสุด</div>
+    <button class="ml-train-btn" id="sendPriceRangeBtn" onclick="sendPriceRangeToSupabase()"
+      style="border-color:rgba(0,255,178,.5);color:var(--acc);padding:5px 12px;font-size:10px;">
+      📤 ส่ง 14D → Supabase
+    </button>
+  </div>
   <div id="highLowTableWrap" style="overflow-x:auto;padding:8px 0 14px 0;"></div>
   <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:14px;">
     * สูงสุด/ต่ำสุดคำนวณจากทุก session ที่มีจริงในช่วงที่เลือก ไม่ใช่แค่จุดต้น-จุดปลาย · "ห่าง High/Low" คือระยะจากราคาปัจจุบัน (ใช้ประกอบการดูจุดซื้อขาย ไม่ใช่คำสั่งซื้อขาย)
+    · ปุ่มส่งคำนวณ 14 วันเสมอ ตายตัว ไม่ขึ้นกับปุ่ม 7D/14D/30D ด้านบน (ปุ่มนั้นไว้แค่ดูตาราง สลับได้อิสระไม่กระทบสิ่งที่ส่ง)
   </div>
   <div class="div"></div>
 
@@ -3482,6 +3489,94 @@ function computeNDayHighLow(days) {
 
   out.sort((a,b) => a.symbol.localeCompare(b.symbol));
   return out;
+}
+
+// ============================================================
+// 📤 ส่ง High/Low 14 วัน ไป Supabase — ให้ frontend อ่านต่อได้ (pattern เดียวกับ exportMLConfig)
+// ตั้งใจ hardcode 14 วันตายตัว ไม่ผูกกับปุ่ม 7D/14D/30D ที่ใช้ดูตาราง (คนละหน้าที่กัน)
+// ระบบใช้ 14 วันอย่างเดียวตามที่ตกลง จึงไม่ต้องกังวลเรื่อง config หลายช่วงชนกันใน Supabase
+// เก็บใน ml_config เดิม โดยตั้ง config_type='pricerange' แยกจาก 'backend'/'value' ที่มีอยู่แล้ว
+// ============================================================
+async function sendPriceRangeToSupabase() {
+  const btn = document.getElementById('sendPriceRangeBtn');
+  const origHTML = btn.innerHTML;
+  btn.textContent = '⏳ Saving...';
+  btn.disabled = true;
+
+  const days = 14; // hardcode ตายตัว — ไม่อ่านจาก perfChartDays ที่ผูกกับปุ่มดูตารางด้านบน
+  const data = computeNDayHighLow(days);
+  const versionKey = `pricerange-${days}d-` + new Date().toISOString().slice(0,19).replace(/[:T]/g,'');
+
+  const payload = {
+    days,
+    generated: new Date().toISOString(),
+    prices: data.map(d => ({
+      symbol: d.symbol, group: d.group,
+      current: d.current, current_date: d.currentDate,
+      high: d.high, high_date: d.highDate,
+      low: d.low, low_date: d.lowDate,
+      coverage_days: d.coverageDays,
+      from_high_pct: +d.fromHighPct.toFixed(2),
+      from_low_pct: +d.fromLowPct.toFixed(2),
+    })),
+  };
+
+  let saveErr = null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify([{
+        version:      versionKey,
+        config_type:  'pricerange',
+        weights:      {},
+        thresholds:   payload,
+        normalize:    {},
+        correlations: {},
+        group_regime: {},
+        note:         `High/Low ${days} วัน · ${data.length} symbols`,
+        is_active:    true,
+        trained_at:   payload.generated,
+      }]),
+    });
+    if(!res.ok) { const e = await res.json(); saveErr = new Error(e.message||JSON.stringify(e)); }
+  } catch(err) {
+    saveErr = err; // network-level error — ไม่ได้แปลว่า insert ไม่สำเร็จเสมอไป (เช็คของจริงต่อด้านล่าง)
+  }
+
+  // ไม่เดาจาก error type — เช็คของจริงจาก Supabase ว่า version นี้เข้าไปหรือยัง (กฎเดิมของระบบ)
+  let actuallySaved = false;
+  try {
+    const check = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_config?select=id&version=eq.${encodeURIComponent(versionKey)}&config_type=eq.pricerange`,
+      { headers: sb._hdr() }
+    );
+    const rows = await check.json();
+    actuallySaved = Array.isArray(rows) && rows.length > 0;
+  } catch(checkErr) {
+    console.warn('[sendPriceRangeToSupabase] ตรวจสอบสถานะไม่ได้:', checkErr);
+  }
+
+  if(actuallySaved) {
+    btn.innerHTML = `✅ ส่ง ${days}D สำเร็จ!`;
+    btn.style.borderColor = 'var(--acc)';
+    btn.style.color = 'var(--acc)';
+    if(saveErr) {
+      alert(`✅ บันทึกสำเร็จจริงครับ (เช็คจาก Supabase แล้วเจอ version ${versionKey})\n\nตอนกด Save เน็ตสะดุดเลยแจ้งเตือนช้าไปหน่อย แต่ข้อมูลเข้าแล้วครับ ไม่ต้องกดซ้ำ`);
+    }
+  } else {
+    btn.innerHTML = '⚠️ ส่งไม่สำเร็จ';
+    btn.style.borderColor = 'var(--warn)';
+    btn.style.color = 'var(--warn)';
+    alert(`❌ ส่งไม่สำเร็จจริงครับ (เช็คจาก Supabase แล้วไม่เจอ version ${versionKey})\n\nสาเหตุ: ${saveErr ? saveErr.message : 'ไม่ทราบสาเหตุ'}\n\nกดส่งใหม่ได้เลยครับ`);
+  }
+
+  setTimeout(() => {
+    btn.innerHTML = origHTML;
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    btn.disabled = false;
+  }, 3000);
 }
 
 function renderHighLowTable() {
