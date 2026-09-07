@@ -1375,6 +1375,57 @@ function momentumPeakSince(symbol, hotRsiThreshold = 70) {
   };
 }
 
+/* ============================================================ RECOVERY TROUGH SINCE COLD (SL ใหม่ — ตัวจริง)
+   ฟังก์ชันใหม่แยกต่างหาก คู่ขนานกับ momentumPeakSince() แต่กลับด้าน — ไม่แตะของเดิมเลย
+   ตอบคำถาม "ตำแหน่งนี้เคยร่วงจนเข้าเขต oversold ไหม แล้วถ้ากำลังฟื้นอยู่ ฟื้นได้ไกลสุดแค่ไหนแล้ว"
+   ใช้แทนที่ SL แบบ % จากทุนเดิม — SL จริงคือ "ฟื้นแล้วร่วงกลับจาก recovery peak" ไม่ใช่ราคาหลุด % ตายตัว
+
+   ต่างจาก momentumPeakSince ตรงที่: momentumPeakSince ต้องการ RSI ตอนนี้ ≥ hotThreshold (กำลังร้อนอยู่)
+   แต่ตัวนี้ต้องการ (1) เคยแตะ coldRsiThreshold มาก่อนในประวัติ และ (2) ตอนนี้ RSI สูงกว่าจุดต่ำสุดนั้น
+   (กำลังอยู่ระหว่างฟื้นจริง) — ถ้าไม่เคยแตะเขตเย็นเลย หรือฟื้นยังไม่จริง จะคืนค่า null ทั้งคู่
+
+   คืนค่า null ถ้า (ก) ไม่เคยแตะ coldRsiThreshold ในประวัติที่มี หรือ (ข) ตอนนี้ยังไม่ได้ฟื้นขึ้นจากจุดนั้นเลย
+*/
+function recoveryTroughSince(symbol, coldRsiThreshold = 30) {
+  const rows = allRows
+    .filter(r => r.symbol === symbol && r.price > 0 && r.rsi != null && !isNaN(r.rsi))
+    .sort((a,b) => ((a.date+a.time) > (b.date+b.time) ? 1 : -1));
+  if(rows.length === 0) return null;
+
+  // หาจุดที่ RSI แตะ ≤coldRsiThreshold ครั้งล่าสุด (จุด "เข้าเขตเย็น/oversold" ล่าสุด)
+  let troughIdx = -1;
+  for(let i = rows.length - 1; i >= 0; i--) {
+    if((rows[i].rsi ?? 100) <= coldRsiThreshold) { troughIdx = i; break; }
+  }
+  if(troughIdx === -1) return null; // ไม่เคยแตะเขตเย็นเลยในข้อมูลที่มี — ไม่มีจุดฟื้นให้ track
+
+  const troughRow = rows[troughIdx];
+  const latest = rows[rows.length - 1];
+  if((latest.rsi || 0) <= (troughRow.rsi || 0)) return null; // ยังไม่ฟื้นขึ้นจากจุดต่ำสุดนั้นจริง
+
+  const win = rows.slice(troughIdx); // นับตั้งแต่จุดแตะเขตเย็นล่าสุด มาจนถึงตอนนี้ (ช่วง "กำลังฟื้น")
+  let peakRsiRow = win[0], peakPriceRow = win[0];
+  win.forEach(r => {
+    if((r.rsi || 0) > (peakRsiRow.rsi || 0)) peakRsiRow = r;
+    if((r.price || 0) > (peakPriceRow.price || 0)) peakPriceRow = r;
+  });
+
+  return {
+    symbol,
+    cold_threshold: coldRsiThreshold,
+    trough_date: dtKey(troughRow).slice(0, 10),
+    trough_rsi: troughRow.rsi,
+    trough_price: troughRow.price,
+    sessions_in_window: win.length,
+    recovery_peak_rsi: peakRsiRow.rsi,
+    recovery_peak_rsi_date: dtKey(peakRsiRow).slice(0, 10),
+    recovery_peak_price: peakPriceRow.price,
+    recovery_peak_price_date: dtKey(peakPriceRow).slice(0, 10),
+    current_rsi: latest.rsi,
+    current_price: latest.price,
+  };
+}
+
 function composite(r, maxPct50) {
   const w = mlWeights;
   const rsiN=Math.max(0,(r.rsi-30)/70);
@@ -3562,7 +3613,11 @@ async function sendPriceRangeToSupabase() {
   const versionKey = `pricerange-${days}d-` + new Date().toISOString().slice(0,19).replace(/[:T]/g,'');
 
   const peaks = data
-    .map(d => momentumPeakSince(d.symbol)) // null ถ้า RSI ปัจจุบันยังไม่ถึง 70 — กรองทิ้งด้านล่าง
+    .map(d => momentumPeakSince(d.symbol)) // TP อ้างอิงเฉยๆ (ไม่ automate) — RSI≥70
+    .filter(p => p !== null);
+
+  const troughs = data
+    .map(d => recoveryTroughSince(d.symbol)) // SL ใหม่ตัวจริง (จะ automate ที่ frontend) — เคยแตะ RSI≤30 แล้วกำลังฟื้น
     .filter(p => p !== null);
 
   const payload = {
@@ -3577,7 +3632,8 @@ async function sendPriceRangeToSupabase() {
       from_high_pct: +d.fromHighPct.toFixed(2),
       from_low_pct: +d.fromLowPct.toFixed(2),
     })),
-    momentum_peaks: peaks, // เฉพาะตัวที่กำลังร้อน (RSI≥70) — ใช้เป็นฐานอ้างอิง SL/TP-trailing ฝั่ง frontend
+    momentum_peaks: peaks,     // 💎 TP อ้างอิง — โชว์เฉยๆ ไม่มี trigger อัตโนมัติ (ตามที่ตกลงกัน)
+    recovery_troughs: troughs, // 🧊 SL ใหม่ — ฐานนิ่งให้ frontend ต่อยอดเป็น trigger จริง
   };
 
   let saveErr = null;
@@ -3593,7 +3649,7 @@ async function sendPriceRangeToSupabase() {
         normalize:    {},
         correlations: {},
         group_regime: {},
-        note:         `High/Low ${days} วัน · ${data.length} symbols · ${peaks.length} momentum peaks (RSI≥70)`,
+        note:         `High/Low ${days} วัน · ${data.length} symbols · ${peaks.length} TP peaks(RSI≥70) · ${troughs.length} SL recovery(RSI≤30)`,
         is_active:    true,
         trained_at:   payload.generated,
       }]),
