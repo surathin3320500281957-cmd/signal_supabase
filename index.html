@@ -918,7 +918,21 @@ async function autoTrain() {
     Object.keys(newW).forEach(k=>{ newW[k]=+(newW[k]/wSum).toFixed(4); });
     mlWeights = newW;
 
-    // Step 4: thresholds
+    // Step 4: thresholds — คำนวณจาก percentile ของ distribution คะแนนจริง (scale-adaptive)
+    // เดิมใช้เลขฐานคงที่ (35/65/80) + ขอบเขต hardcode (18-92) ผูกกับ scale เก่า (0-100 เป็นหลัก)
+    // ตอนนี้ composite() แก้ sign แล้ว คะแนนติดลบได้มาก (เห็นจริงถึง -47) เลขคงที่เดิมใช้ไม่ได้แล้ว
+    // เปลี่ยนเป็นดึง percentile จากคะแนนจริงของทุกตัวที่มีอยู่ตอนนี้แทน — กลไกเดียวกัน ไม่ว่า scale จะเปลี่ยนไปแค่ไหนในอนาคต
+    const compScores = latest
+      .map(r => composite(r, maxPct))
+      .filter(v => Number.isFinite(v))
+      .sort((a,b) => a-b);
+    const pct = (arr, p) => {
+      if(!arr.length) return 0;
+      const idx = Math.max(0, Math.min(arr.length-1, Math.round((arr.length-1)*p)));
+      return arr[idx];
+    };
+    const spread = (compScores[compScores.length-1] ?? 0) - (compScores[0] ?? 0) || 1;
+
     const accMap = computeAccuracy(sumRows);
     mlAccuracy = accMap;
     const buyAcc = accMap['BUY']?.acc||0.5,  buyN = accMap['BUY']?.total||0;
@@ -926,9 +940,13 @@ async function autoTrain() {
     const tpN    = accMap['TAKE PROFIT']?.total||0;
     const buyConf= Math.min(1,buyN/20), tpConf=Math.min(1,tpN/20);
     const effBuy = 0.5+(buyAcc-0.5)*buyConf, effTp=0.5+(tpAcc-0.5)*tpConf;
-    const tBuy   = Math.max(18,Math.min(48,Math.round(35-(effBuy-0.5)*24)));
-    const tPart  = Math.max(52,Math.min(78,Math.round(65-(effTp-0.5)*24)));
-    const tSell  = Math.max(68,Math.min(92,Math.round(80-(effTp-0.5)*14)));
+    // จุดฐานจาก percentile จริง (20th/65th/85th) แล้วเขย่งตาม accuracy เป็น % ของ spread จริง (ไม่ใช่แต้มคงที่)
+    let tBuy  = Math.round(pct(compScores,0.20) - (effBuy-0.5)*spread*0.24);
+    let tPart = Math.round(pct(compScores,0.65) - (effTp -0.5)*spread*0.24);
+    let tSell = Math.round(pct(compScores,0.85) - (effTp -0.5)*spread*0.14);
+    // กันลำดับสลับกัน (เผื่อ distribution เบี้ยวมากจน percentile ชนกัน)
+    tPart = Math.max(tPart, tBuy + 1);
+    tSell = Math.max(tSell, tPart + 1);
     mlThresholds = {buy:tBuy, hold:tPart, partial:tPart, sell:tSell};
     mlTrained = true;
     mlVersion++;
@@ -1806,8 +1824,23 @@ function mlStep3(corrs, sumRows) {
     ? buyF1  // มีข้อมูล FN พอ → ใช้ F1
     : (accMap['BUY']?.acc || 0.5); // ไม่มี FN → fallback accuracy เดิม
 
-  // === SMARTER THRESHOLD: use accuracy + trade count confidence ===
-  let tBuy=35, tPartial=65, tSell=80;
+  // === SMARTER THRESHOLD: percentile ของคะแนนจริง (scale-adaptive) + accuracy confidence ===
+  // เดิมใช้เลขฐานคงที่ (35/65/80) + ขอบเขต hardcode (18-92) ผูกกับ scale เก่า (0-100 เป็นหลัก)
+  // ตอนนี้ composite() แก้ sign แล้ว คะแนนติดลบได้มาก เลขคงที่เดิมใช้ไม่ได้ — ดึง percentile จากคะแนนจริงแทน
+  // กลไกเดียวกับ autoTrain() ทุกประการ กันไม่ให้ 2 จุดนี้เพี้ยนไปคนละทางในอนาคต
+  const latestForDist = getLatest();
+  const maxPctForDist  = Math.max(...latestForDist.map(r=>r.pct_ema50), 1);
+  const compScores = latestForDist
+    .map(r => composite(r, maxPctForDist))
+    .filter(v => Number.isFinite(v))
+    .sort((a,b) => a-b);
+  const pctOf = (arr, p) => {
+    if(!arr.length) return 0;
+    const idx = Math.max(0, Math.min(arr.length-1, Math.round((arr.length-1)*p)));
+    return arr[idx];
+  };
+  const spread = (compScores[compScores.length-1] ?? 0) - (compScores[0] ?? 0) || 1;
+
   const buyN    = accMap['BUY']?.total  || 0;
   const tpAcc   = accMap['TAKE PROFIT']?.acc || accMap['TP']?.acc || 0.5;
   const tpN     = accMap['TAKE PROFIT']?.total || 0;
@@ -1820,12 +1853,12 @@ function mlStep3(corrs, sumRows) {
   const effBuyAcc = 0.5 + (buyAcc - 0.5) * buyConf;
   const effTpAcc  = 0.5 + (tpAcc  - 0.5) * tpConf;
 
-  tBuy    = Math.round(35 - (effBuyAcc - 0.5) * 24);
-  tPartial= Math.round(65 - (effTpAcc  - 0.5) * 24);
-  tSell   = Math.round(80 - (effTpAcc  - 0.5) * 14);
-  tBuy    = Math.max(18, Math.min(48, tBuy));
-  tPartial= Math.max(52, Math.min(78, tPartial));
-  tSell   = Math.max(68, Math.min(92, tSell));
+  let tBuy    = Math.round(pctOf(compScores,0.20) - (effBuyAcc - 0.5) * spread * 0.24);
+  let tPartial= Math.round(pctOf(compScores,0.65) - (effTpAcc  - 0.5) * spread * 0.24);
+  let tSell   = Math.round(pctOf(compScores,0.85) - (effTpAcc  - 0.5) * spread * 0.14);
+  // กันลำดับสลับกัน (เผื่อ distribution เบี้ยวมากจน percentile ชนกัน)
+  tPartial = Math.max(tPartial, tBuy + 1);
+  tSell    = Math.max(tSell, tPartial + 1);
   mlThresholds = {buy:tBuy, hold:tPartial, partial:tPartial, sell:tSell};
 
   renderWeightBars();
