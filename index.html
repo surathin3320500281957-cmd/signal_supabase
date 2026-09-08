@@ -409,18 +409,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div class="fbar" id="fbar"></div>
   <div class="rank-grid" id="rankGrid"></div>
   <div class="div"></div>
-  <div class="sec">Timeline</div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase;">กรองหุ้น</span>
-    <div class="sym-filter-bar" id="symFilterBar"></div>
-    <input id="symSearch" type="text" placeholder="ค้นหา symbol..." oninput="filterTimeline()">
-  </div>
-  <div class="tl-wrap"><table class="tl-table">
-    <thead><tr>
-      <th>วันที่</th><th>Symbol</th><th>Action</th><th>Score</th><th>ราคา</th>
-    </tr></thead>
-    <tbody id="tlBody"></tbody>
-  </table></div>
 </main>
 </div>
 
@@ -485,7 +473,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 <div id="tab-stocklatest" class="tab-content">
 <main>
   <div class="sec">สรุป Stock ล่าสุด · แต่ละตัวในระบบ</div>
-  <div class="sl-kpi-row" id="slKpiRow"></div>
   <div class="div"></div>
 
   <!-- N-Day Performance chart -->
@@ -513,54 +500,6 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     · ปุ่มส่งคำนวณ 14 วันเสมอ ตายตัว ไม่ขึ้นกับปุ่ม 7D/14D/30D ด้านบน (ปุ่มนั้นไว้แค่ดูตาราง สลับได้อิสระไม่กระทบสิ่งที่ส่ง)
   </div>
   <div class="div"></div>
-
-  <!-- Filter + search + export row -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Filter</span>
-    <div id="slFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-    <input id="slSearch" type="text" placeholder="ค้นหา symbol..."
-      oninput="filterStockLatest()"
-      style="font-family:var(--mono);font-size:10px;padding:5px 12px;background:rgba(255,255,255,.05);
-      border:1px solid var(--border);color:var(--text);border-radius:3px;outline:none;width:150px;">
-
-  </div>
-
-  <!-- Rotation filter row -->
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-    <span style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;text-transform:uppercase">Rotation</span>
-    <div id="slFilterBarRotation" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-  </div>
-
-
-
-  <div class="sl-table-wrap">
-    <table class="sl-table">
-      <thead><tr>
-        <th>#</th>
-        <th>Symbol / Group</th>
-        <th>Date · Session</th>
-        <th>ราคา</th>
-        <th>Action</th>
-        <th>RSI</th>
-        <th>Heat</th>
-        <th>Risk</th>
-        <th>ML Score</th>
-        <th>Health</th>
-        <th>Trend</th>
-        <th>Rotation</th>
-        <th>ทำจริง</th>
-        <th>คะแนนกำไร ↓</th>
-      </tr></thead>
-      <tbody id="slBody"></tbody>
-    </table>
-  </div>
-
-  <div style="margin-top:12px;padding:10px 14px;background:rgba(206,147,216,.05);
-    border:1px solid rgba(206,147,216,.18);border-radius:6px;font-family:var(--mono);
-    font-size:9px;color:#8FCFBA;line-height:1.8;">
-    📊 <span style="color:var(--acc)">คะแนนกำไร</span> = Composite ML Score (เหมือน Tab Signal Matrix) · เรียงมากสุดก่อน<br>
-    🤖 <span style="color:var(--purple)">AI แนะนำ</span> = วิเคราะห์อัตโนมัติจาก RSI · Heat · %EMA50 · Momentum · ML Score
-  </div>
 </main>
 </div>
 
@@ -3033,8 +2972,6 @@ function renderAll() {
   </div>`).join('');
   setupFilters(latest,maxPct50);
   renderRanking(latest,maxPct50);
-  renderTimeline();
-  setTimeout(buildSymFilter,0);
   // render Stock Latest tab ทุกครั้งที่ข้อมูลเปลี่ยน
   renderStockLatest();
   // หมายเหตุ: เคยมี renderSummaryTab() เรียกตรงนี้ (pre-render ล่วงหน้า)
@@ -3122,60 +3059,6 @@ function renderRanking(latest,maxPct50) {
       </div>
     </div>`;
   }).join('');
-}
-
-/* ============================================================ TIMELINE */
-function buildSymFilter() {
-  const bar=document.getElementById('symFilterBar');
-  if(!bar) return;
-  const syms=[...new Set(allRows.map(r=>r.symbol))].sort();
-  bar.innerHTML=`<button class="sfb ${symFilterNowTl==='ALL'?'on':''}" onclick="setSymFilter('ALL')">ALL</button>`+
-    syms.map(s=>`<button class="sfb ${symFilterNowTl===s?'on':''}" onclick="setSymFilter('${s}')">${s}</button>`).join('');
-}
-function setSymFilter(s){
-  symFilterNowTl=s;
-  const inp=document.getElementById('symSearch');
-  if(inp) inp.value='';
-  buildSymFilter();
-  filterTimeline();
-}
-function filterTimeline(){
-  const search=(document.getElementById('symSearch')?.value||'').toUpperCase().trim();
-  document.getElementById('tlBody').innerHTML=renderTimelineRows(symFilterNowTl,search);
-}
-function renderTimeline(){
-  document.getElementById('tlBody').innerHTML=renderTimelineRows('ALL','');
-}
-function renderTimelineRows(symFilter,search) {
-  symFilter=symFilter||'ALL'; search=search||'';
-  // สร้าง latestMap เพื่อดึง aiLabel + composite score
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp=composite(r,maxPct50); r._aiLabel=aiLabel(r); });
-  const latestMap = {};
-  latest.forEach(r=>{ latestMap[r.symbol]=r; });
-
-  return [...allRows]
-    .filter(r=>{
-      if(symFilter!=='ALL'&&r.symbol!==symFilter) return false;
-      if(search&&!r.symbol.includes(search)&&!r.group.toUpperCase().includes(search)) return false;
-      return true;
-    })
-    .sort((a,b)=>(b.date+b.time)<(a.date+a.time)?-1:1)
-    .map(r=>{
-      const lx = latestMap[r.symbol];
-      const al = lx?._aiLabel || r.action;
-      const comp = lx?._comp ?? null;
-      const compTxt = comp!==null ? comp : r.score+'/8';
-      const compClr2 = comp!==null ? compClr(comp) : 'var(--acc)';
-      return `<tr>
-        <td style="color:#8FCFBA">${r.date}</td>
-        <td style="font-weight:700;color:var(--text);font-size:12px">${r.symbol}</td>
-        <td>${aiLabelPill(al)}</td>
-        <td style="color:${compClr2};font-weight:700">${compTxt}</td>
-        <td style="color:var(--text);font-weight:600">$${r.price.toLocaleString('en',{minimumFractionDigits:2})}</td>
-      </tr>`;
-    }).join('')||`<tr><td colspan="5" style="text-align:center;padding:20px;color:#8FCFBA">ไม่พบข้อมูล</td></tr>`;
 }
 
 /* ============================================================ PORTFOLIO */
@@ -3855,150 +3738,6 @@ function renderPerfChart() {
 function renderStockLatest() {
   renderPerfChart();
   renderHighLowTable();
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
-  latest.sort((a,b)=>b._comp-a._comp);
-
-  // KPI — นับจาก r.action ให้ตรงกับปุ่ม Filter
-  latest.forEach(r=>{ r._aiLabel = aiLabel(r); });
-  const buyCount = latest.filter(r=>r.action==='BUY').length;
-  const tpCount  = latest.filter(r=>r.action==='TAKE PROFIT').length;
-  const avgComp  = latest.length?(latest.reduce((s,r)=>s+r._comp,0)/latest.length).toFixed(1):'—';
-  const topStock = latest[0];
-  document.getElementById('slKpiRow').innerHTML=[
-    {l:'หุ้นทั้งหมด',v:latest.length,s:'ในระบบ stock_history',c:'g'},
-    {l:'BUY Signal',v:buyCount,s:'ยังมี upside',c:'b'},
-    {l:'Avg Score',v:avgComp,s:'คะแนนเฉลี่ย ML',c:'w'},
-    {l:'Top Pick',v:topStock?.symbol||'—',s:`Score: ${topStock?._comp||0}`,c:'o'},
-  ].map(k=>`<div class="kpi ${k.c}">
-    <div class="kpi-lbl">${k.l}</div>
-    <div class="kpi-val">${k.v}</div>
-    <div class="kpi-sub">${k.s}</div>
-  </div>`).join('');
-
-  // Filter buttons พร้อม count
-  const actionCounts = {};
-  latest.forEach(r=>{ actionCounts[r.action]=(actionCounts[r.action]||0)+1; });
-  const actions = ['ALL','BUY','TAKE PROFIT','WATCH'];
-  document.getElementById('slFilterBar').innerHTML = actions.map(a=>{
-    const cnt = a==='ALL' ? latest.length : (actionCounts[a]||0);
-    return `<button class="fb ${a===slFilterAction?'on':''}" onclick="setSLFilter('${a}')">${a} <span style="opacity:.65;font-size:8px">(${cnt})</span></button>`;
-  }).join('');
-
-  // Rotation filter buttons พร้อม count — ใช้ rotationCategory() ตัวเดียวกับที่ column แสดงผล
-  const rotationCounts = { 'Rotate IN':0, 'Rotate OUT':0, 'FLAT':0 };
-  latest.forEach(r=>{ rotationCounts[rotationCategory(r)]++; });
-  const rotationOpts = [
-    {key:'ALL',        label:'ALL'},
-    {key:'Rotate IN',  label:'🔃 Rotate IN'},
-    {key:'Rotate OUT', label:'⚠️ Rotate OUT'},
-    {key:'FLAT',       label:'— Flat'},
-  ];
-  document.getElementById('slFilterBarRotation').innerHTML = rotationOpts.map(o=>{
-    const cnt = o.key==='ALL' ? latest.length : (rotationCounts[o.key]||0);
-    return `<button class="fb ${o.key===slFilterRotation?'on':''}" onclick="setSLFilterRotation('${o.key}')">${o.label} <span style="opacity:.65;font-size:8px">(${cnt})</span></button>`;
-  }).join('');
-
-  renderSLRows(latest);
-}
-
-function setSLFilterRotation(a) {
-  slFilterRotation = a;
-  document.querySelectorAll('#slFilterBarRotation .fb').forEach(b=>{
-    // เทียบจาก data key แทน textContent เพราะ label มี emoji/spacing ต่างจาก key
-    const key = b.getAttribute('onclick').match(/setSLFilterRotation\('(.+?)'\)/)[1];
-    b.classList.toggle('on', key===a);
-  });
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
-  latest.sort((a,b)=>b._comp-a._comp);
-  renderSLRows(latest);
-}
-
-function setSLFilter(a) {
-  slFilterAction = a;
-  document.querySelectorAll('#slFilterBar .fb').forEach(b=>b.classList.toggle('on',b.textContent===a));
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
-  latest.sort((a,b)=>b._comp-a._comp);
-  renderSLRows(latest);
-}
-
-function filterStockLatest() {
-  const latest = getLatest();
-  const maxPct50 = Math.max(...latest.map(r=>r.pct_ema50),1);
-  latest.forEach(r=>{ r._comp = composite(r, maxPct50); });
-  latest.sort((a,b)=>b._comp-a._comp);
-  renderSLRows(latest);
-}
-
-function renderSLRows(latest) {
-  const search = (document.getElementById('slSearch')?.value||'').toUpperCase().trim();
-
-  // คำนวณ aiLabel สำหรับแสดงใน column "AI แนะนำ" เท่านั้น
-  const withLabel = latest.map(r=>({ ...r, _aiLabel: typeof aiLabel === 'function' ? aiLabel(r) : r.action }));
-
-  // filter ใช้ r.action จาก Sheet ให้ตรงกับ column "Action" ที่แสดงในตาราง
-  const filtered = withLabel.filter(r=>{
-    if(slFilterAction!=='ALL') {
-      if(r.action !== slFilterAction) return false;
-    }
-    if(slFilterRotation!=='ALL' && rotationCategory(r)!==slFilterRotation) return false;
-    if(search && !r.symbol.includes(search) && !r.group.toUpperCase().includes(search)) return false;
-    return true;
-  });
-
-  document.getElementById('slBody').innerHTML = filtered.length===0
-    ? `<tr><td colspan="14" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono)">ไม่พบข้อมูล</td></tr>`
-    : filtered.map((r,i)=>{
-        const comp = r._comp;
-        const cClr = compClr(comp);
-        const pillBg = comp>=mlThresholds.sell?'rgba(244,67,54,.15)':comp>=mlThresholds.partial?'rgba(255,107,53,.15)':comp>=mlThresholds.buy?'rgba(255,193,7,.12)':'rgba(0,255,178,.12)';
-        const pillBrd = comp>=mlThresholds.sell?'rgba(244,67,54,.4)':comp>=mlThresholds.partial?'rgba(255,107,53,.4)':comp>=mlThresholds.buy?'rgba(255,193,7,.35)':'rgba(0,255,178,.4)';
-        const rsiColor = rsiClr(r.rsi);
-        const hColor = heatClr(r.heat);
-        const slKey = actualKey(r);
-        // default: ถ้ายังไม่เคยเลือก → หุ้นใน port = "ถือ", นอก port = "ไม่สนใจ"
-        if(!actualActionMap[slKey] || actualActionMap[slKey]==='—') {
-          actualActionMap[slKey] = portMap[r.symbol] ? 'ถือ' : 'ไม่สนใจ';
-        }
-        const slOpts = ACTUAL_ACTIONS.map(a=>`<option value="${a}" ${(actualActionMap[slKey])===a?'selected':''}>${a}</option>`).join('');
-        const ts = trendSlope(r.symbol, Math.max(...filtered.map(x=>x.pct_ema50),1));
-        const tsClr = ts.slope<=-3?'var(--danger)':ts.slope<=-1?'var(--warn)':ts.slope>=2?'var(--acc)':'var(--muted)';
-        const hs = healthScore(r, ts.slope);
-        const hsClr = hs>=40?'var(--acc)':hs>=0?'var(--warn)':'var(--danger)';
-        const hsTxt = hs>=40?'✅':'⚠️';
-        // Sector Rotation badge — ใช้ rotationCategory() ตัวเดียวกับที่ filter ใช้ (single source of truth)
-        const rotCat = rotationCategory(r);
-        const rotBadge = rotCat === 'Rotate IN'
-          ? `<span style="background:#14532d;color:#4ade80;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">🔃 Rotate IN</span>`
-          : rotCat === 'Rotate OUT'
-          ? `<span style="background:#450a0a;color:#f87171;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;">⚠️ Rotate OUT</span>`
-          : `<span style="color:var(--muted);font-size:10px;">—</span>`;
-        return `<tr>
-          <td style="font-family:var(--mono);color:var(--muted);font-size:11px">${i+1}</td>
-          <td><div class="sl-sym">${r.symbol}</div><div class="sl-grp">${r.group}</div></td>
-          <td style="font-family:var(--mono);font-size:10px;color:#8FCFBA">${r.date}<br><span style="color:var(--muted);font-size:9px">${r.session}</span></td>
-          <td style="font-family:var(--mono);font-weight:700;color:var(--text)">$${r.price.toLocaleString('en',{minimumFractionDigits:2})}</td>
-          <td>${aiLabelPill(r._aiLabel)}</td>
-          <td style="font-family:var(--mono);font-weight:700;color:${rsiColor}">${r.rsi}</td>
-          <td><span style="font-family:var(--mono);font-size:10px;font-weight:700;color:${hColor}">${r.heat}</span></td>
-          <td style="font-family:var(--mono);font-size:10px;color:${r.risk==='LOW'?'var(--acc)':r.risk==='MEDIUM'?'var(--warn)':'var(--danger)'}">${r.risk}</td>
-          <td style="font-family:var(--mono);font-weight:700;color:${cClr}">${comp}</td>
-          <td style="font-family:var(--mono);font-size:10px;color:${hsClr}">${hsTxt} ${hs}<div style="font-size:9px;color:var(--muted)">${hs>=40?'trend ดี':hs>=0?'กลางๆ':'trend แย่'}</div></td>
-          <td style="font-size:10px;color:${tsClr};white-space:nowrap">${ts.label}<div style="font-size:9px;color:var(--muted)">${ts.slope>0?'+':''}${ts.slope} pts</div></td>
-          <td>${rotBadge}</td>
-          <td><select onchange="setActualAction('${slKey}',this.value)" style="font-family:var(--mono);font-size:10px;padding:4px 8px;background:#1a1a2e;border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:3px;outline:none;cursor:pointer;">${slOpts}</select></td>
-          <td>
-            <span class="score-pill" style="background:${pillBg};border-color:${pillBrd};color:${cClr}">
-              ${comp}
-            </span>
-          </td>
-        </tr>`;
-      }).join('');
 }
 
 // AI Label pill สำหรับแสดงใน column
