@@ -858,9 +858,10 @@ async function autoTrain() {
     mlWeights = newW;
 
     // Step 4: thresholds — คำนวณจาก percentile ของ distribution คะแนนจริง (scale-adaptive)
-    // เดิมใช้เลขฐานคงที่ (35/65/80) + ขอบเขต hardcode (18-92) ผูกกับ scale เก่า (0-100 เป็นหลัก)
-    // ตอนนี้ composite() แก้ sign แล้ว คะแนนติดลบได้มาก (เห็นจริงถึง -47) เลขคงที่เดิมใช้ไม่ได้แล้ว
-    // เปลี่ยนเป็นดึง percentile จากคะแนนจริงของทุกตัวที่มีอยู่ตอนนี้แทน — กลไกเดียวกัน ไม่ว่า scale จะเปลี่ยนไปแค่ไหนในอนาคต
+    // ⚠️ กลับทิศทาง (2026-09-09): หลังแก้บั๊ก sign ของ weight คะแนนนี้ความหมายกลับด้านแล้ว
+    // เดิม "คะแนนสูง = ร้อน = ขาย, คะแนนต่ำ = เย็น = ซื้อ" (ก่อนแก้ sign)
+    // ตอนนี้ "คะแนนต่ำ/ติดลบมาก = ร้อน = ขาย, คะแนนสูง/ใกล้บวก = เย็น = ซื้อ" (เพราะ RSI/Heat ฯลฯ ส่วนใหญ่มี weight ติดลบแล้ว)
+    // → tBuy ต้องมาจาก percentile สูง (ปลอดภัยสุด) / tSell ต้องมาจาก percentile ต่ำ (ร้อนสุด) กลับจากเดิม
     const compScores = latest
       .map(r => composite(r, maxPct))
       .filter(v => Number.isFinite(v))
@@ -879,20 +880,20 @@ async function autoTrain() {
     const tpN    = accMap['TAKE PROFIT']?.total||0;
     const buyConf= Math.min(1,buyN/20), tpConf=Math.min(1,tpN/20);
     const effBuy = 0.5+(buyAcc-0.5)*buyConf, effTp=0.5+(tpAcc-0.5)*tpConf;
-    // จุดฐานจาก percentile จริง (20th/65th/85th) แล้วเขย่งตาม accuracy เป็น % ของ spread จริง (ไม่ใช่แต้มคงที่)
-    let tBuy  = Math.round(pct(compScores,0.20) - (effBuy-0.5)*spread*0.24);
-    let tPart = Math.round(pct(compScores,0.65) - (effTp -0.5)*spread*0.24);
-    let tSell = Math.round(pct(compScores,0.85) - (effTp -0.5)*spread*0.14);
-    // กันลำดับสลับกัน (เผื่อ distribution เบี้ยวมากจน percentile ชนกัน)
-    tPart = Math.max(tPart, tBuy + 1);
-    tSell = Math.max(tSell, tPart + 1);
+    // จุดฐานจาก percentile จริง (กลับทิศแล้ว: sell=15th(ต่ำสุด/ร้อนสุด), buy=80th(สูงสุด/ปลอดภัยสุด))
+    let tSell = Math.round(pct(compScores,0.15) + (effTp -0.5)*spread*0.14);
+    let tPart = Math.round(pct(compScores,0.40) + (effTp -0.5)*spread*0.24);
+    let tBuy  = Math.round(pct(compScores,0.80) + (effBuy-0.5)*spread*0.24);
+    // กันลำดับสลับกัน (เผื่อ distribution เบี้ยวมากจน percentile ชนกัน) — ลำดับใหม่: sell < partial < buy
+    tPart = Math.max(tPart, tSell + 1);
+    tBuy  = Math.max(tBuy,  tPart + 1);
     mlThresholds = {buy:tBuy, hold:tPart, partial:tPart, sell:tSell};
     mlTrained = true;
     mlVersion++;
 
     // อัพเดต status bar เงียบๆ
     const note = document.getElementById('mlThreshNote');
-    if(note) note.textContent = ` · ML v${mlVersion} ✓ (BUY<${tBuy} / SELL>${tSell})`;
+    if(note) note.textContent = ` · ML v${mlVersion} ✓ (SELL<${tSell} / BUY>${tBuy})`;
 
     // Re-render signal matrix ให้คะแนนใหม่ทันที
     renderAll();
@@ -1489,9 +1490,10 @@ function portfolioAction(h) {
   if(ms >= 30 && slope < 0)  return { action:'📈 Momentum ดี แต่ระวัง', cls:'at-hold' };
 
   // 4. กลาง ๆ — ดู composite
-  if(h.comp >= mlThresholds.sell)    return { action:'ขายหมด · Upside หมด', cls:'at-sell' };
-  if(h.comp >= mlThresholds.partial) return { action:'ขายบางส่วน · Rotate', cls:'at-partial' };
-  if(h.comp < mlThresholds.buy && hs >= 40 && slope >= 0) return { action:'ซื้อเพิ่ม · Upside สูง', cls:'at-add' };
+  // ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน" "สูง = ปลอดภัย" (ตรงข้ามเดิม)
+  if(h.comp <= mlThresholds.sell)    return { action:'ขายหมด · Upside หมด', cls:'at-sell' };
+  if(h.comp <= mlThresholds.partial) return { action:'ขายบางส่วน · Rotate', cls:'at-partial' };
+  if(h.comp >= mlThresholds.buy && hs >= 40 && slope >= 0) return { action:'ซื้อเพิ่ม · Upside สูง', cls:'at-add' };
   return { action:'ถือต่อ', cls:'at-hold' };
 }
 
@@ -1764,9 +1766,8 @@ function mlStep3(corrs, sumRows) {
     : (accMap['BUY']?.acc || 0.5); // ไม่มี FN → fallback accuracy เดิม
 
   // === SMARTER THRESHOLD: percentile ของคะแนนจริง (scale-adaptive) + accuracy confidence ===
-  // เดิมใช้เลขฐานคงที่ (35/65/80) + ขอบเขต hardcode (18-92) ผูกกับ scale เก่า (0-100 เป็นหลัก)
-  // ตอนนี้ composite() แก้ sign แล้ว คะแนนติดลบได้มาก เลขคงที่เดิมใช้ไม่ได้ — ดึง percentile จากคะแนนจริงแทน
-  // กลไกเดียวกับ autoTrain() ทุกประการ กันไม่ให้ 2 จุดนี้เพี้ยนไปคนละทางในอนาคต
+  // ⚠️ กลับทิศทาง (2026-09-09): เหตุผลเดียวกับ autoTrain() — ดู comment ที่นั่นสำหรับรายละเอียดเต็ม
+  // tBuy=percentile สูง(ปลอดภัย) / tSell=percentile ต่ำ(ร้อนสุด) — กลับจากเดิม
   const latestForDist = getLatest();
   const maxPctForDist  = Math.max(...latestForDist.map(r=>r.pct_ema50), 1);
   const compScores = latestForDist
@@ -1792,12 +1793,12 @@ function mlStep3(corrs, sumRows) {
   const effBuyAcc = 0.5 + (buyAcc - 0.5) * buyConf;
   const effTpAcc  = 0.5 + (tpAcc  - 0.5) * tpConf;
 
-  let tBuy    = Math.round(pctOf(compScores,0.20) - (effBuyAcc - 0.5) * spread * 0.24);
-  let tPartial= Math.round(pctOf(compScores,0.65) - (effTpAcc  - 0.5) * spread * 0.24);
-  let tSell   = Math.round(pctOf(compScores,0.85) - (effTpAcc  - 0.5) * spread * 0.14);
-  // กันลำดับสลับกัน (เผื่อ distribution เบี้ยวมากจน percentile ชนกัน)
-  tPartial = Math.max(tPartial, tBuy + 1);
-  tSell    = Math.max(tSell, tPartial + 1);
+  let tSell   = Math.round(pctOf(compScores,0.15) + (effTpAcc  - 0.5) * spread * 0.14);
+  let tPartial= Math.round(pctOf(compScores,0.40) + (effTpAcc  - 0.5) * spread * 0.24);
+  let tBuy    = Math.round(pctOf(compScores,0.80) + (effBuyAcc - 0.5) * spread * 0.24);
+  // กันลำดับสลับกัน — ลำดับใหม่: sell < partial < buy
+  tPartial = Math.max(tPartial, tSell + 1);
+  tBuy     = Math.max(tBuy, tPartial + 1);
   mlThresholds = {buy:tBuy, hold:tPartial, partial:tPartial, sell:tSell};
 
   renderWeightBars();
@@ -2325,16 +2326,17 @@ function adjustWeight(key, e) {
 }
 
 // ---- Render thresholds ----
+// ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน(ขาย)" "สูง = ปลอดภัย(ซื้อ)"
 function renderThresholds() {
   document.getElementById('tBuy').textContent    = mlThresholds.buy;
-  document.getElementById('tHold').textContent   = `${mlThresholds.buy}–${mlThresholds.partial}`;
-  document.getElementById('tPartial').textContent= mlThresholds.partial;
+  document.getElementById('tHold').textContent   = `${mlThresholds.partial}–${mlThresholds.buy}`;
+  document.getElementById('tPartial').textContent= `${mlThresholds.sell}–${mlThresholds.partial}`;
   document.getElementById('tSell').textContent   = mlThresholds.sell;
   document.getElementById('threshNote').innerHTML=`
-    ซื้อเพิ่ม: Score &lt; <b style="color:var(--acc)">${mlThresholds.buy}</b> · 
-    ถือต่อ: ${mlThresholds.buy}–${mlThresholds.partial} · 
-    ขายบางส่วน: ${mlThresholds.partial}–${mlThresholds.sell} · 
-    ขายหมด: &gt; <b style="color:var(--danger)">${mlThresholds.sell}</b>
+    ขายหมด: Score &lt; <b style="color:var(--danger)">${mlThresholds.sell}</b> · 
+    ขายบางส่วน: ${mlThresholds.sell}–${mlThresholds.partial} · 
+    ถือต่อ: ${mlThresholds.partial}–${mlThresholds.buy} · 
+    ซื้อเพิ่ม: Score &gt; <b style="color:var(--acc)">${mlThresholds.buy}</b>
   `;
 }
 
@@ -2888,15 +2890,16 @@ function checkAlertsOnUpload(toAdd) {
 /* ============================================================ RENDER HELPERS */
 function rsiClr(v){return v>=80?'var(--danger)':v>=70?'var(--tp)':v>=60?'var(--warn)':'var(--acc)';}
 function heatClr(h){return h==='EXTREME'?'var(--tp)':h==='HOT'?'var(--warn)':'var(--acc)';}
+// ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน" "สูง = ปลอดภัย" (ตรงข้ามเดิม)
 function compClr(v){
-  if(v>=mlThresholds.sell) return 'var(--danger)';
-  if(v>=mlThresholds.partial) return 'var(--tp)';
-  if(v>=mlThresholds.buy) return 'var(--warn)';
+  if(v<=mlThresholds.sell) return 'var(--danger)';
+  if(v<=mlThresholds.partial) return 'var(--tp)';
+  if(v<=mlThresholds.buy) return 'var(--warn)';
   return 'var(--acc)';
 }
 function gradeLabel(v){
-  if(v>=mlThresholds.sell)    return {txt:'🔥 MOMENTUM',bg:'rgba(255,107,53,.15)',clr:'var(--tp)'};
-  if(v>=mlThresholds.partial) return {txt:'⚡ BUILDING',bg:'rgba(255,193,7,.12)',clr:'var(--warn)'};
+  if(v<=mlThresholds.sell)    return {txt:'🔥 MOMENTUM',bg:'rgba(255,107,53,.15)',clr:'var(--tp)'};
+  if(v<=mlThresholds.partial) return {txt:'⚡ BUILDING',bg:'rgba(255,193,7,.12)',clr:'var(--warn)'};
   return {txt:'🟢 FRESH BUY',bg:'rgba(0,255,178,.12)',clr:'var(--acc)'};
 }
 function actionPill(a){
@@ -3839,13 +3842,14 @@ function renderScoreChart() {
         const scClr = compClr(sc);
 
         // กรอบ (border) = ML Zone ณ ตอนที่ trade
-        const zoneColor = sc >= mlThresholds.sell    ? 'rgba(244,67,54,.9)'   // SELL zone — แดง
-                        : sc >= mlThresholds.partial  ? 'rgba(255,107,53,.9)'  // PARTIAL SELL — ส้ม
-                        : sc >= mlThresholds.buy      ? 'rgba(255,193,7,.9)'   // HOLD zone — เหลือง
+        // ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน(ขาย)" "สูง = ปลอดภัย(ซื้อ)"
+        const zoneColor = sc <= mlThresholds.sell    ? 'rgba(244,67,54,.9)'   // SELL zone — แดง
+                        : sc <= mlThresholds.partial  ? 'rgba(255,107,53,.9)'  // PARTIAL SELL — ส้ม
+                        : sc <= mlThresholds.buy      ? 'rgba(255,193,7,.9)'   // HOLD zone — เหลือง
                         :                               'rgba(0,255,178,.9)';   // BUY zone — เขียว
-        const zoneLabel = sc >= mlThresholds.sell    ? 'SELL ZONE'
-                        : sc >= mlThresholds.partial  ? 'PARTIAL ZONE'
-                        : sc >= mlThresholds.buy      ? 'HOLD ZONE'
+        const zoneLabel = sc <= mlThresholds.sell    ? 'SELL ZONE'
+                        : sc <= mlThresholds.partial  ? 'PARTIAL ZONE'
+                        : sc <= mlThresholds.buy      ? 'HOLD ZONE'
                         :                               'BUY ZONE';
 
         // พื้นหลัง = WIN/LOSS/PENDING
@@ -3881,11 +3885,12 @@ function renderScoreChart() {
 
   // ===== Zone Accuracy Summary =====
   // นับ WIN/LOSS แยกตาม ML Zone ของ score ณ ตอนนั้น (จาก sumRows ทั้งหมด)
+  // ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน(ขาย)" "สูง = ปลอดภัย(ซื้อ)"
   const zones = [
-    { label:'BUY ZONE',     color:'rgba(0,255,178,.9)',   check: sc => sc < mlThresholds.buy },
-    { label:'HOLD ZONE',    color:'rgba(255,193,7,.9)',   check: sc => sc >= mlThresholds.buy && sc < mlThresholds.partial },
-    { label:'PARTIAL ZONE', color:'rgba(255,107,53,.9)',  check: sc => sc >= mlThresholds.partial && sc < mlThresholds.sell },
-    { label:'SELL ZONE',    color:'rgba(244,67,54,.9)',   check: sc => sc >= mlThresholds.sell },
+    { label:'SELL ZONE',    color:'rgba(244,67,54,.9)',   check: sc => sc <= mlThresholds.sell },
+    { label:'PARTIAL ZONE', color:'rgba(255,107,53,.9)',  check: sc => sc > mlThresholds.sell && sc <= mlThresholds.partial },
+    { label:'HOLD ZONE',    color:'rgba(255,193,7,.9)',   check: sc => sc > mlThresholds.partial && sc <= mlThresholds.buy },
+    { label:'BUY ZONE',     color:'rgba(0,255,178,.9)',   check: sc => sc > mlThresholds.buy },
   ];
   const zoneStats = zones.map(z => {
     const zRows = sumRows.filter(r => {
@@ -3933,21 +3938,22 @@ function aiLabel(r) {
   const c = r._comp;
   const hs = healthScore(r);
   const ms = momentumScore(r);
-  // STOPLOSS
+  // STOPLOSS — อิงราคา vs ทุน ไม่เกี่ยวกับ composite scale ไม่ต้องกลับทิศ
   const costPrice = portMap[r.symbol]||null;
   if(costPrice) {
     const slPctVal = r.risk==='LOW'?0.08:r.risk==='HIGH'?0.12:0.10;
     const slPrice  = costPrice*(1-slPctVal);
     if(r.price<=slPrice) return 'STOPLOSS';
   }
-  // STRONG BUY
-  if(r.action==='BUY'&&r.score>=7&&r.confidence==='A'&&r.rsi<65&&r.heat==='COOL'&&r.risk==='LOW'&&hs>=40&&c<mlThresholds.partial) return 'STRONG BUY';
-  // SELL
-  if(c>=mlThresholds.sell||(r.action==='TAKE PROFIT'&&r.rsi>=75)) return 'SELL';
+  // ⚠️ กลับทิศทาง (2026-09-09): composite ตอนนี้ "ต่ำ/ติดลบมาก = ร้อน" "สูง = ปลอดภัย" (ตรงข้ามเดิม)
+  // STRONG BUY — ต้องอยู่โซนปลอดภัย (c สูงกว่า partial แล้ว ไม่ใช่ต่ำกว่า)
+  if(r.action==='BUY'&&r.score>=7&&r.confidence==='A'&&r.rsi<65&&r.heat==='COOL'&&r.risk==='LOW'&&hs>=40&&c>mlThresholds.partial) return 'STRONG BUY';
+  // SELL — c ต่ำกว่า sell threshold (ร้อนสุด) แทนที่จะสูงกว่า
+  if(c<=mlThresholds.sell||(r.action==='TAKE PROFIT'&&r.rsi>=75)) return 'SELL';
   // PARTIAL SELL
-  if(c>=mlThresholds.partial||(r.rsi>=70&&r.heat==='EXTREME')||(ms<0&&c>=mlThresholds.buy)) return 'PARTIAL SELL';
-  // BUY
-  if(r.confidence==='A'&&c<mlThresholds.buy&&hs>=40&&r.rsi<65) return 'BUY';
+  if(c<=mlThresholds.partial||(r.rsi>=70&&r.heat==='EXTREME')||(ms<0&&c<mlThresholds.buy)) return 'PARTIAL SELL';
+  // BUY — c ต้องสูงกว่า buy threshold แล้ว (โซนปลอดภัยสุด) แทนที่จะต่ำกว่า
+  if(r.confidence==='A'&&c>=mlThresholds.buy&&hs>=40&&r.rsi<65) return 'BUY';
   if(r.action==='BUY'&&hs>=0) return 'BUY';
   return 'WATCH';
 }
