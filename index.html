@@ -904,12 +904,17 @@ async function autoTrain() {
     mlCorrelations = corrs;
 
     // Step 3: weights
+    // แก้บั๊ก sign — เดิมทิ้งทิศทาง (Math.abs) ตรงนี้เก็บ sign ไว้ (ถ้า corr ติดลบ weight ก็ติดลบตาม)
+    // ยังคง floor ขนาดขั้นต่ำ 0.01 ไว้เหมือนเดิม (กัน weight เป็น 0 เฉยๆ)
     const absC = {};
-    Object.entries(corrs).forEach(([k,v])=>{ absC[k]=Math.max(0.01,Math.abs(v)); });
-    const tot = Object.values(absC).reduce((s,v)=>s+v,0);
+    Object.entries(corrs).forEach(([k,v])=>{
+      const mag = Math.max(0.01, Math.abs(v));
+      absC[k] = v >= 0 ? mag : -mag;
+    });
+    const tot = Object.values(absC).reduce((s,v)=>s+Math.abs(v),0); // normalize ด้วยผลรวม "ขนาด" เหมือนเดิม
     const newW = {};
     Object.entries(absC).forEach(([k,v])=>{ newW[k]=+(v/tot).toFixed(4); });
-    const wSum = Object.values(newW).reduce((s,v)=>s+v,0);
+    const wSum = Object.values(newW).reduce((s,v)=>s+Math.abs(v),0); // ใช้ผลรวมขนาด ไม่ใช่ผลรวมตรงๆ (กันหักล้างกันเองจน div ผิด)
     Object.keys(newW).forEach(k=>{ newW[k]=+(newW[k]/wSum).toFixed(4); });
     mlWeights = newW;
 
@@ -1771,16 +1776,20 @@ function mlStep2(latest, sumRows) {
 
 // ---- Step 3: Weights + Thresholds (smarter) ----
 function mlStep3(corrs, sumRows) {
-  // Weight = |corr| / total (ensure all positive)
+  // แก้บั๊ก sign — เดิม comment เขียนไว้ตรงๆ ว่า "ensure all positive" (ทิ้ง sign ทิ้งไปตรงนี้)
+  // ตอนนี้เก็บ sign ไว้ (ถ้า corr ติดลบ weight ก็ติดลบตาม) ยังคง floor ขนาดขั้นต่ำ 0.01 เหมือนเดิม
   const absCorrs = {};
-  Object.entries(corrs).forEach(([k,v])=>{ absCorrs[k]=Math.max(0.01, Math.abs(v)); });
-  const total = Object.values(absCorrs).reduce((s,v)=>s+v,0);
+  Object.entries(corrs).forEach(([k,v])=>{
+    const mag = Math.max(0.01, Math.abs(v));
+    absCorrs[k] = v >= 0 ? mag : -mag;
+  });
+  const total = Object.values(absCorrs).reduce((s,v)=>s+Math.abs(v),0); // normalize ด้วยผลรวม "ขนาด" เหมือนเดิม
   const newW = {};
   Object.entries(absCorrs).forEach(([k,v])=>{
     newW[k] = total>0 ? +(v/total).toFixed(4) : mlWeights[k];
   });
-  // Normalize to sum=1
-  const wSum = Object.values(newW).reduce((s,v)=>s+v,0);
+  // Normalize to sum(|w|)=1 (กันหักล้างกันเองจน div ผิดตอน sum ตรงๆ)
+  const wSum = Object.values(newW).reduce((s,v)=>s+Math.abs(v),0);
   Object.keys(newW).forEach(k=>{ newW[k]=+(newW[k]/wSum).toFixed(4); });
   mlWeights = newW;
 
@@ -2174,10 +2183,10 @@ async function trainValueModel() {
       GroupRS:   pearson(col('grs'),      Y),
     };
 
-    // 4. normalize → weights (abs / sum, กัน NaN)
+    // 4. normalize → weights (เก็บ sign ไว้ — แก้บั๊กที่เคยทิ้งทิศทางไปกับ Math.abs ตรงนี้)
     const absSum = Object.values(corrs).reduce((s,v)=>s+Math.abs(v||0), 0) || 1;
     const weights = {};
-    Object.entries(corrs).forEach(([k,v]) => { weights[k] = +(Math.abs(v||0)/absSum).toFixed(4); });
+    Object.entries(corrs).forEach(([k,v]) => { weights[k] = +((v||0)/absSum).toFixed(4); });
 
     // 5. save Supabase config_type='value'
     // version มี timestamp กันซ้ำ + insert อย่างเดียว (ไม่ต้อง PATCH ปิด active เก่าเอง)
