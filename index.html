@@ -541,6 +541,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="trainBtn" onclick="runMLTrain()">⚡ Train ML</button>
     <button class="ml-train-btn" id="trainValueBtn" onclick="trainValueModel()" style="border-color:rgba(244,114,182,.5);color:#f472b6;">💎 Train Value</button>
     <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
+    <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
       <div id="valueWeightsBody" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.9;"></div>
@@ -752,6 +753,72 @@ function buildForwardTrainingSet(horizon) {
     }
   });
   return { X, Yf };
+}
+
+// ============================================================
+// 🆕 buildForwardTrainingSetByDays — v1 ของแผน "การบ้าน ML" (2026-09-09)
+// ต่างจาก buildForwardTrainingSet() เดิมตรงที่นับ "วันปฏิทินจริง" แทน "จำนวนรอบ/session"
+// เป็นฟังก์ชันคู่ขนานอิสระ 100% — ไม่แตะ ไม่เรียก buildForwardTrainingSet() เดิมเลย
+// ยังไม่เชื่อมเข้า autoTrain()/mlStep3() — ใช้ทดสอบ/ดู sample count ก่อนตัดสินใจใช้จริง (รอบคอบตามที่ตกลง)
+//
+// tolerance: ถ้าไม่มีข้อมูลตรงวันเป๊ะ (วันหยุดตลาด/ยังไม่ refresh) หาในช่วง ±tolerance วันแทน
+// ไม่เจอเลยในขอบเขตนั้น = ข้าม cur ตัวนั้นไปเงียบๆ (fail gracefully ตามกฎข้อ 2)
+// ============================================================
+function buildForwardTrainingSetByDays(days, tolerance = 1) {
+  const bySym = {};
+  allRows.forEach(r => {
+    if(!r.symbol || !(r.price > 0)) return;
+    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+  });
+
+  const X = [], Yf = [], matchedDaysGap = [];
+  Object.values(bySym).forEach(rows => {
+    rows.sort((a,b) => (dtKey(a) > dtKey(b) ? 1 : -1));
+    // รวมหลาย session ในวันเดียวกัน — ใช้ค่าล่าสุดของวันนั้น (rows sort แล้วจึงทับกันถูกลำดับ)
+    const byDate = {};
+    rows.forEach(r => { byDate[dtKey(r).slice(0,10)] = r; });
+    const dateKeys = Object.keys(byDate).sort();
+
+    dateKeys.forEach(curKey => {
+      const cur = byDate[curKey];
+      const [y,m,d] = curKey.split('-').map(Number);
+      const targetDate = new Date(y, m-1, d);
+      targetDate.setDate(targetDate.getDate() + days);
+
+      let bestKey = null, bestDiff = Infinity;
+      for(let off = -tolerance; off <= tolerance; off++) {
+        const probe = new Date(targetDate);
+        probe.setDate(probe.getDate() + off);
+        const probeKey = probe.getFullYear()+'-'+String(probe.getMonth()+1).padStart(2,'0')+'-'+String(probe.getDate()).padStart(2,'0');
+        if(byDate[probeKey] && Math.abs(off) < bestDiff) { bestKey = probeKey; bestDiff = Math.abs(off); }
+      }
+      if(!bestKey) return; // ไม่มีข้อมูลวันนั้นจริงในขอบเขต tolerance — ข้าม ไม่ error
+
+      const fut = byDate[bestKey];
+      if(!(fut.price > 0)) return;
+      X.push(cur);
+      Yf.push((fut.price - cur.price) / cur.price * 100);
+      matchedDaysGap.push(bestDiff);
+    });
+  });
+
+  return { X, Yf, matchedDaysGap, requestedDays: days };
+}
+
+// 🧪 ปุ่มทดสอบชั่วคราว — โชว์แค่จำนวน sample ที่ได้จริงของ 7D/14D ก่อนตัดสินใจใช้เทรนจริง
+// ไม่เชื่อมเข้า pipeline การเทรนใดๆ ทั้งสิ้น เป็นแค่เครื่องมือตรวจสอบข้อมูลก่อนลงมือ (รอบคอบตามที่ตกลง)
+function previewForwardTrainingSetByDays() {
+  const r7  = buildForwardTrainingSetByDays(7);
+  const r14 = buildForwardTrainingSetByDays(14);
+  const avgGap = arr => arr.length ? (arr.reduce((s,v)=>s+v,0)/arr.length).toFixed(2) : '—';
+  alert(
+    `🧪 Preview Forward Training Set (วันจริง)\n\n` +
+    `7D  → samples: ${r7.X.length}  · เฉลี่ยคลาดเคลื่อน: ${avgGap(r7.matchedDaysGap)} วัน\n` +
+    `14D → samples: ${r14.X.length} · เฉลี่ยคลาดเคลื่อน: ${avgGap(r14.matchedDaysGap)} วัน\n\n` +
+    `(ยังไม่เชื่อมเข้าการเทรนจริง — แค่ตรวจสอบว่ามี sample พอไหมก่อน)`
+  );
+  console.log('[Preview 7D]', r7);
+  console.log('[Preview 14D]', r14);
 }
 
 /* ============================================================ AUTO TRAIN (silent) */
