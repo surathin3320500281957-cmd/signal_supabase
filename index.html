@@ -930,6 +930,44 @@ function calcForwardScore(r, days) {
   return rsiN*w.RSI + heatN*w.Heat + pctN*w.pct50 + momN*w.EMAMom + scrN*w.Score;
 }
 
+// ============================================================
+// 🆕 saveForwardSnapshot — บันทึก snapshot ของ Convergence ลง Supabase อัตโนมัติ
+// ใช้ pattern เดียวกับ exportMLConfig() เป๊ะ (INSERT เข้า ml_config, ไม่ทับของเก่า
+// trigger ensure_single_active_ml_config จะปิด is_active ของแถวเก่าให้เอง แต่ "ไม่ลบ"
+// แปลว่า snapshot ของทุกวันยังอยู่ครบ ดึงย้อนหลังมาเทียบกับราคาจริงได้ทีหลัง)
+// ⚠️ ต้องรัน SQL เพิ่ม config_type='forward-snapshot' ใน constraint ก่อนใช้งานจริง (บอกไว้แล้ว)
+// ============================================================
+async function saveForwardSnapshot(rows) {
+  const versionKey = 'forward-snapshot-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify([{
+        version:      versionKey,
+        config_type:  'forward-snapshot',
+        weights:      { snapshotDate: new Date().toISOString().slice(0,10), rows },
+        thresholds:   {},
+        normalize:    {},
+        correlations: {},
+        group_regime: {},
+        note:         `Forward Convergence snapshot — ${rows.length} symbols`,
+        is_active:    true,
+        trained_at:   new Date().toISOString(),
+      }]),
+    });
+    if(!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      console.error('[saveForwardSnapshot] insert failed', e);
+      return false;
+    }
+    return true;
+  } catch(err) {
+    console.error('[saveForwardSnapshot] network error', err);
+    return false; // fail gracefully — ไม่ให้กระทบการแสดงผลตาราง Convergence เลย
+  }
+}
+
 function renderForwardConvergence() {
   if(!mlForwardModels[7] || !mlForwardModels[14]) {
     alert('ต้องกด "Train Forward 7D/14D" ให้เสร็จก่อนครับ (ยังไม่มีโมเดลให้ใช้คำนวณ)');
@@ -954,6 +992,13 @@ function renderForwardConvergence() {
   const conflictCount = rows.filter(r => r.status === 'conflict').length;
   const weakCount     = rows.filter(r => r.status === 'weak').length;
 
+  // 🆕 บันทึกอัตโนมัติทุกครั้งที่กดปุ่มนี้ — fire-and-forget ไม่รอ ไม่บล็อคการแสดงผลตาราง
+  // (fail gracefully: ถ้า save ไม่สำเร็จ ตารางยังโชว์ปกติ แค่ไม่มี snapshot ของรอบนี้เก็บไว้)
+  saveForwardSnapshot(rows).then(ok => {
+    const noteEl = document.getElementById('fwdSnapshotNote');
+    if(noteEl) noteEl.textContent = ok ? '💾 บันทึก snapshot แล้ว' : '⚠️ บันทึกไม่สำเร็จ (ตารางยังโชว์ปกติ)';
+  });
+
   const badgeMap = {
     agree:    '✅ ตรงกัน',
     conflict: '❌ ขัดกันจริง',
@@ -968,6 +1013,7 @@ function renderForwardConvergence() {
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
       🆕 FORWARD CONVERGENCE 7D vs 14D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง)<br>
       ✅ ตรงกัน ${agreeCount} · ❌ ขัดกันจริง ${conflictCount} · ⚪ ไม่มีสัญญาณ ${weakCount} · รวม ${rows.length} ตัว
+      · <span id="fwdSnapshotNote" style="color:var(--muted);">⏳ กำลังบันทึก...</span>
     </div>
     <div style="max-height:420px;overflow-y:auto;font-family:var(--mono);font-size:11px;">
       ${rows.map(r => `
