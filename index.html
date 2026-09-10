@@ -936,20 +936,38 @@ function renderForwardConvergence() {
     return;
   }
   const latest = getLatest();
+  // เกณฑ์ "ไม่มีสัญญาณ" — ถ้าทั้ง 7D และ 14D ใกล้ 0 มาก (<0.05) ไม่นับเป็น "ขัดกัน" แม้ sign ต่างกัน
+  // เพราะ +0.01 กับ -0.01 คือ "ไม่แน่ใจทั้งคู่" ไม่ใช่ "มั่นใจไปคนละทาง" (เจอเคส AVGO/IONQ ที่ทำให้ต้องเพิ่มเกณฑ์นี้)
+  const NO_SIGNAL = 0.05;
   const rows = latest.map(r => {
     const s7  = calcForwardScore(r, 7);
     const s14 = calcForwardScore(r, 14);
-    const agree = (s7 >= 0 && s14 >= 0) || (s7 < 0 && s14 < 0);
-    return { symbol: r.symbol, s7, s14, agree };
+    let status;
+    if(s7 == null || s14 == null) status = 'unknown';
+    else if(Math.abs(s7) < NO_SIGNAL && Math.abs(s14) < NO_SIGNAL) status = 'weak';
+    else if((s7 >= 0 && s14 >= 0) || (s7 < 0 && s14 < 0)) status = 'agree';
+    else status = 'conflict';
+    return { symbol: r.symbol, s7, s14, status };
   }).sort((a,b) => a.symbol.localeCompare(b.symbol));
 
-  const agreeCount = rows.filter(r => r.agree).length;
+  const agreeCount    = rows.filter(r => r.status === 'agree').length;
+  const conflictCount = rows.filter(r => r.status === 'conflict').length;
+  const weakCount     = rows.filter(r => r.status === 'weak').length;
+
+  const badgeMap = {
+    agree:    '✅ ตรงกัน',
+    conflict: '❌ ขัดกันจริง',
+    weak:     '⚪ ไม่มีสัญญาณ',
+    unknown:  '— ไม่มีข้อมูล',
+  };
+
   const panel = document.getElementById('forwardConvergencePanel');
   if(!panel) return;
   panel.style.display = 'block';
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
-      🆕 FORWARD CONVERGENCE 7D vs 14D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง) · ตรงกัน ${agreeCount}/${rows.length} ตัว
+      🆕 FORWARD CONVERGENCE 7D vs 14D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง)<br>
+      ✅ ตรงกัน ${agreeCount} · ❌ ขัดกันจริง ${conflictCount} · ⚪ ไม่มีสัญญาณ ${weakCount} · รวม ${rows.length} ตัว
     </div>
     <div style="max-height:420px;overflow-y:auto;font-family:var(--mono);font-size:11px;">
       ${rows.map(r => `
@@ -957,7 +975,7 @@ function renderForwardConvergence() {
           <span style="width:60px;font-weight:700;">${r.symbol}</span>
           <span style="color:${r.s7>=0?'var(--acc)':'var(--danger)'};width:90px;">7D: ${r.s7!=null?r.s7.toFixed(3):'—'}</span>
           <span style="color:${r.s14>=0?'var(--acc)':'var(--danger)'};width:90px;">14D: ${r.s14!=null?r.s14.toFixed(3):'—'}</span>
-          <span>${r.agree ? '✅ ตรงกัน' : '❌ ขัดกัน'}</span>
+          <span>${badgeMap[r.status]}</span>
         </div>
       `).join('')}
     </div>
