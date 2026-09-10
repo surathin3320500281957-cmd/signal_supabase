@@ -542,6 +542,8 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="trainValueBtn" onclick="trainValueModel()" style="border-color:rgba(244,114,182,.5);color:#f472b6;">💎 Train Value</button>
     <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
     <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
+    <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
+    <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
       <div id="valueWeightsBody" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.9;"></div>
@@ -819,6 +821,88 @@ function previewForwardTrainingSetByDays() {
   );
   console.log('[Preview 7D]', r7);
   console.log('[Preview 14D]', r14);
+}
+
+// ============================================================
+// 🆕 trainForwardModel(days) — v1 ของแผน "การบ้าน ML" ขั้นที่ 2 — เทรนจริงจาก forward-return วันจริง
+// Plan A ที่ตกลงกัน: ใช้แค่ 5 feature ที่ point-in-time ถูกต้องจริง (RSI/Heat/pct50/EMAMom/Score)
+// ตัด GroupRS/Slope ออกชั่วคราว — สองตัวนั้นคำนวณจากข้อมูล "ตอนนี้" เท่านั้น ไม่มีเวอร์ชันย้อนเวลา
+// เอามาจับคู่กับแถวอดีตใน fwd.X จะเกิด look-ahead bias (เอาอนาคตมาอธิบายอดีต) — รอทำเป็น v1.5 ทีหลัง
+//
+// เก็บผลแยกใน mlForwardModels — ไม่แตะ ไม่ทับ mlWeights/mlThresholds เดิมที่ composite()/aiLabel()
+// /portfolioAction() ใช้งานจริงอยู่ตอนนี้เลยแม้แต่นิดเดียว เป็นโมเดลทดลองคู่ขนาน อ่านอย่างเดียว
+// ============================================================
+let mlForwardModels = {}; // { 7: {...}, 14: {...} }
+
+function trainForwardModel(days) {
+  const fwd = buildForwardTrainingSetByDays(days);
+  if(fwd.X.length < 50) {
+    console.warn(`[trainForwardModel] sample ไม่พอสำหรับ ${days}D (${fwd.X.length} < 50)`);
+    return null;
+  }
+
+  const maxAbsY = Math.max(...fwd.Yf.map(v => Math.abs(v)), 1);
+  const Y = fwd.Yf.map(v => Math.max(-1, Math.min(1, v / maxAbsY)));
+
+  const maxPct  = Math.max(...fwd.X.map(r => r.pct_ema50), 1);
+  const rsiArr  = fwd.X.map(r => Math.max(0, (r.rsi - 30) / 70));
+  const heatArr = fwd.X.map(r => (r.heat_n - 1) / 2);
+  const scrArr  = fwd.X.map(r => r.score > 4 ? (r.score - 4) / 4 : 0);
+  const momArr  = fwd.X.map(r => r.ema50 > 0 ? Math.min(((r.ema20 - r.ema50) / r.ema50 * 100) / (maxPct || 1), 1) : 0);
+  const pctArr  = fwd.X.map(r => r.ema50 > 0 ? Math.min((r.ema20 / r.ema50 - 1) * 5, 1) : 0);
+
+  // เก็บ sign ไว้ตั้งแต่แรก (ไม่ใช้ Math.abs ในเศษ) — ตามบทเรียนที่แก้ไปเมื่อคืนกับโมเดลเดิม
+  const corrs = {
+    RSI:    pearson(rsiArr,  Y),
+    Heat:   pearson(heatArr, Y),
+    pct50:  pearson(pctArr,  Y),
+    EMAMom: pearson(momArr,  Y),
+    Score:  pearson(scrArr,  Y),
+  };
+  const absSum = Object.values(corrs).reduce((s,v) => s + Math.abs(v || 0), 0) || 1;
+  const weights = {};
+  Object.entries(corrs).forEach(([k,v]) => { weights[k] = +((v || 0) / absSum).toFixed(4); });
+
+  const avgGap = fwd.matchedDaysGap.length
+    ? fwd.matchedDaysGap.reduce((s,v) => s+v, 0) / fwd.matchedDaysGap.length
+    : 0;
+
+  const result = { days, samples: fwd.X.length, avgGap: +avgGap.toFixed(2), corrs, weights };
+  mlForwardModels[days] = result;
+  return result;
+}
+
+function runForwardModelTraining() {
+  const r7  = trainForwardModel(7);
+  const r14 = trainForwardModel(14);
+  const panel = document.getElementById('forwardModelPanel');
+  if(!panel) return;
+
+  const renderOne = (r) => {
+    if(!r) return `<div style="color:var(--danger);">sample ไม่พอ (ต้อง ≥50)</div>`;
+    const rows = Object.entries(r.corrs).map(([k,v]) => {
+      const w = r.weights[k];
+      const clr = v >= 0 ? 'var(--acc)' : 'var(--danger)';
+      return `<div style="display:flex;justify-content:space-between;padding:2px 0;">
+        <span>${k}</span>
+        <span style="color:${clr};">r=${v.toFixed(4)} · w=${(w*100).toFixed(1)}%</span>
+      </div>`;
+    }).join('');
+    return `<div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
+      samples: ${r.samples} · เฉลี่ยคลาดเคลื่อน: ${r.avgGap} วัน
+    </div>${rows}`;
+  };
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      🧪 FORWARD MODEL (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง)
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-family:var(--mono);font-size:11px;">
+      <div><div style="color:var(--text);font-weight:700;margin-bottom:4px;">7D Model</div>${renderOne(r7)}</div>
+      <div><div style="color:var(--text);font-weight:700;margin-bottom:4px;">14D Model</div>${renderOne(r14)}</div>
+    </div>
+  `;
 }
 
 /* ============================================================ AUTO TRAIN (silent) */
