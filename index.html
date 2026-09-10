@@ -196,6 +196,13 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 
 .ml-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;}
 .ml-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:18px 20px;}
+
+/* 🆕 Recovery Forecast table (ใหม่ — ไม่มี table style สำเร็จรูปในไฟล์นี้มาก่อน) */
+.ml-table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
+.ml-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.ml-table th{text-align:left;padding:10px 14px;color:#8FCFBA;font-size:9px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap;}
+.ml-table td{padding:8px 14px;color:var(--text);border-bottom:1px solid rgba(255,255,255,.05);white-space:nowrap;}
+.ml-table tr:hover td{background:rgba(255,255,255,.02);}
 .ml-card-title{font-family:var(--mono);font-size:9px;letter-spacing:3px;color:#8FCFBA;text-transform:uppercase;margin-bottom:14px;}
 
 /* Step cards */
@@ -388,6 +395,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
   <button class="tab-btn" onclick="switchTab('stocklatest')">📊 สรุป Stock ล่าสุด</button>
   <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
+  <button class="tab-btn" onclick="switchTab('recovery')">🔮 Recovery Forecast</button>
 </div>
 
 <!-- TAB 1: SIGNAL MATRIX -->
@@ -544,8 +552,10 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
     <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
     <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
+    <button class="ml-train-btn" id="recoveryForecastBtn" onclick="previewRecoveryForecast()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🆕 Recovery Forecast (ทดลอง — ประมาณคร่าวๆ)</button>
     <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
+    <div id="recoveryForecastPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
       <div id="valueWeightsBody" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.9;"></div>
@@ -612,6 +622,32 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
       <button class="ml-export-btn" onclick="exportMLConfig()" style="padding:5px 14px;font-size:9px">💾 Download</button>
     </div>
     <pre id="mlConfigJson" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;overflow-x:auto;line-height:1.6;max-height:280px;overflow-y:auto;margin-top:8px"></pre>
+  </div>
+</main>
+</div>
+
+<!-- 🆕 TAB 5: RECOVERY FORECAST (ทดลอง — เรื่องเฉพาะ, ไม่เชื่อมเข้าการตัดสินใจจริง) -->
+<div id="tab-recovery" class="tab-content">
+<main>
+  <div class="ml-card" style="margin-bottom:16px;">
+    <div class="ml-card-title">🔮 Recovery Forecast — ประมาณเวลาฟื้นตัวจาก RSI Divergence</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8;margin-top:6px;">
+      ผสม (1) สัญญาณ RSI Bullish Divergence ปัจจุบัน + (2) สถิติในอดีตว่าตัวที่เคยแตะ RSI≤30
+      แล้วฟื้นเหนือ 50 จริง ใช้เวลากี่วัน (median/average) — <b style="color:var(--warn);">⚠️ เป็นการประมาณคร่าวๆ
+      ไม่ใช่คำทำนายแม่นยำ</b> divergence บอกได้แค่ "สัญญาณกำลังก่อตัว" ไม่ใช่จำนวนวันที่แน่นอน
+      ยังไม่เชื่อมเข้า composite()/aiLabel()/portfolioAction() เลยแม้แต่จุดเดียว
+    </div>
+    <div id="recoveryStatsNote" style="margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--text);"></div>
+  </div>
+
+  <div class="ml-table-wrap">
+    <table class="ml-table">
+      <thead><tr>
+        <th>Symbol</th><th>Group</th><th>Price</th><th>RSI</th><th>SL Status</th>
+        <th>Divergence</th><th>ประมาณเวลาฟื้น (คร่าวๆ)</th>
+      </tr></thead>
+      <tbody id="recoveryTabBody"></tbody>
+    </table>
   </div>
 </main>
 </div>
@@ -701,7 +737,7 @@ const sb = {
 
 /* ============================================================ TABS */
 function switchTab(tab) {
-  const tabs = ['signal','portfolio','stocklatest','ml'];
+  const tabs = ['signal','portfolio','stocklatest','ml','recovery'];
   tabs.forEach((t,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', t===tab);
     document.getElementById('tab-'+t).classList.toggle('active', t===tab);
@@ -709,6 +745,7 @@ function switchTab(tab) {
   if(tab==='portfolio') renderPortfolio();
   if(tab==='stocklatest') renderStockLatest();
   if(tab==='ml') renderMLPreview();
+  if(tab==='recovery') renderRecoveryTab();
 }
 
 /* ============================================================ STATE */
@@ -1661,6 +1698,187 @@ function recoveryTroughSince(symbol, coldRsiThreshold = 30) {
     current_rsi: latest.rsi,
     current_price: latest.price,
   };
+}
+
+// ============================================================
+// 🆕 Recovery Time Forecast — ต่อยอดจาก "การบ้าน ML" (2026-09-10)
+// แนวคิด: ผสม (1) สัญญาณ RSI Divergence ปัจจุบัน + (2) สถิติในอดีตว่า
+// "ตัวที่เคยมีสภาพคล้ายกัน (เคยแตะ RSI≤30) ใช้เวลาฟื้นเฉลี่ย/median กี่วัน"
+// ยังคงเป็นระบบทดลองคู่ขนาน — ไม่เชื่อมเข้า composite()/aiLabel()/portfolioAction() เลย
+// ⚠️ ให้แค่ "ช่วงประมาณคร่าวๆ" ไม่ใช่คำทำนายแม่นยำ — divergence บอกได้แค่ "สัญญาณก่อตัวหรือยัง"
+// ไม่มีใครทำนายจำนวนวันแม่นๆ จาก divergence ได้แม้แต่ในตำราเทคนิคัลคลาสสิก
+// ============================================================
+
+// (1) ตรวจ RSI Bullish Divergence ของหุ้นตัวหนึ่ง ณ ตอนนี้
+// นิยาม: ราคาทำจุดต่ำใหม่ (lower low) แต่ RSI ไม่ทำจุดต่ำใหม่ตาม (higher low) = แรงขายเริ่มอ่อนลง
+// วิธีง่ายสุด (v1): แบ่งช่วงย้อนหลังเป็น 2 ครึ่ง หาจุดต่ำสุดของแต่ละครึ่ง เทียบกัน
+function detectRSIDivergence(symbol, lookbackDays = 20) {
+  const rows = allRows
+    .filter(r => r.symbol === symbol && r.price > 0 && r.rsi != null && !isNaN(r.rsi))
+    .sort((a,b) => (dtKey(a) > dtKey(b) ? 1 : -1));
+  if(rows.length === 0) return null;
+
+  const byDate = {};
+  rows.forEach(r => { byDate[dtKey(r).slice(0,10)] = r; }); // ค่าล่าสุดของแต่ละวัน (rows sort แล้ว)
+  const daily = Object.keys(byDate).sort().map(k => byDate[k]).slice(-lookbackDays);
+  if(daily.length < 10) return { symbol, status: 'not_enough_data', samples: daily.length };
+
+  const mid = Math.floor(daily.length / 2);
+  const firstHalf  = daily.slice(0, mid);
+  const secondHalf = daily.slice(mid);
+
+  const low1 = firstHalf.reduce((min, r) => r.price < min.price ? r : min, firstHalf[0]);
+  const low2 = secondHalf.reduce((min, r) => r.price < min.price ? r : min, secondHalf[0]);
+
+  const priceLowerLow = low2.price < low1.price;
+  const rsiHigherLow  = low2.rsi > low1.rsi;
+  const isDivergence  = priceLowerLow && rsiHigherLow;
+
+  return {
+    symbol,
+    status: isDivergence ? 'divergence' : 'none',
+    low1: { date: dtKey(low1).slice(0,10), price: low1.price, rsi: low1.rsi },
+    low2: { date: dtKey(low2).slice(0,10), price: low2.price, rsi: low2.rsi },
+  };
+}
+
+// (2) สแกนประวัติ "ทุกครั้งที่เคยแตะ RSI≤coldThreshold แล้วฟื้นขึ้นเหนือ hotThreshold ได้จริง"
+// ของทุกตัว ทุกช่วงเวลาในอดีต — เก็บ "ใช้เวลากี่วัน" ของแต่ละครั้ง แล้วสรุปเป็น median/average
+function calcHistoricalRecoveryStats(coldRsiThreshold = 30, hotRsiThreshold = 50) {
+  const bySym = {};
+  allRows.forEach(r => {
+    if(!r.symbol || r.rsi == null || isNaN(r.rsi)) return;
+    (bySym[r.symbol] = bySym[r.symbol] || []).push(r);
+  });
+
+  const recoveryDurations = [];
+  Object.values(bySym).forEach(rows => {
+    rows.sort((a,b) => (dtKey(a) > dtKey(b) ? 1 : -1));
+    const byDate = {};
+    rows.forEach(r => { byDate[dtKey(r).slice(0,10)] = r; });
+    const daily = Object.keys(byDate).sort().map(k => byDate[k]);
+
+    let troughDateStr = null;
+    for(let i = 0; i < daily.length; i++) {
+      const r = daily[i];
+      if(!troughDateStr && r.rsi <= coldRsiThreshold) {
+        troughDateStr = dtKey(r).slice(0,10);
+      } else if(troughDateStr && r.rsi > hotRsiThreshold) {
+        const [y1,m1,d1] = troughDateStr.split('-').map(Number);
+        const [y2,m2,d2] = dtKey(r).slice(0,10).split('-').map(Number);
+        const days = Math.round((new Date(y2,m2-1,d2) - new Date(y1,m1-1,d1)) / 86400000);
+        if(days > 0) recoveryDurations.push(days);
+        troughDateStr = null; // รีเซ็ต รอ trough รอบถัดไป
+      }
+    }
+  });
+
+  recoveryDurations.sort((a,b) => a-b);
+  const n = recoveryDurations.length;
+  const median = n ? recoveryDurations[Math.floor(n/2)] : null;
+  const avg = n ? +(recoveryDurations.reduce((s,v)=>s+v,0)/n).toFixed(1) : null;
+
+  return { count: n, median, avg, coldRsiThreshold, hotRsiThreshold };
+}
+
+// (3) รวม 2 อย่างเข้าด้วยกัน แสดงเป็นตารางทดลอง สำหรับตัวที่กำลัง oversold อยู่ตอนนี้
+
+// (4) 🆕 renderRecoveryTab — เวอร์ชันเต็มสำหรับแท็บใหม่ (ครบทุกตัว ไม่ใช่แค่ตัวที่ oversold)
+// ต่างจาก previewRecoveryForecast() (ที่กรองแค่ RSI≤35 แสดงใน panel เล็ก) — ตัวนี้โชว์ทุกตัว
+// ในตารางเต็ม ตัวที่ไม่ได้ oversold จะโชว์ "—" ในช่อง Divergence/ประมาณเวลา (ไม่มีอะไรให้ประมาณ)
+function renderRecoveryTab() {
+  const stats = calcHistoricalRecoveryStats(30, 50);
+  const noteEl = document.getElementById('recoveryStatsNote');
+  if(noteEl) {
+    noteEl.innerHTML = stats.count < 20
+      ? `⚠️ สถิติในอดีตยังมีแค่ ${stats.count} ครั้ง (ต้อง ≥20 ถึงจะเริ่มเชื่อ median/average ได้) — ตัวเลขประมาณด้านล่างยังไม่ควรเชื่อเต็มที่`
+      : `📊 สถิติในอดีต (${stats.count} ครั้งที่เคยแตะ RSI≤30 แล้วฟื้นเหนือ 50 จริง): median <b style="color:var(--acc)">${stats.median} วัน</b> · เฉลี่ย <b style="color:var(--acc)">${stats.avg} วัน</b>`;
+  }
+
+  const latest = getLatest();
+  const rows = latest.map(r => {
+    const isOversoldZone = (r.rsi ?? 100) <= 35;
+    const div = isOversoldZone ? detectRSIDivergence(r.symbol) : null;
+    const trough = recoveryTroughSince(r.symbol);
+    let slLabel = '—', slColor = 'var(--muted)';
+    if(trough) {
+      const stillHot = (r.rsi||0) > (trough.trough_rsi||0);
+      slLabel = stillHot ? '🟢 กำลังฟื้น' : '—';
+      slColor = stillHot ? 'var(--acc)' : 'var(--muted)';
+    }
+    return { symbol: r.symbol, group: r.group, price: r.price, rsi: r.rsi, slLabel, slColor, div, isOversoldZone };
+  }).sort((a,b) => (a.rsi ?? 100) - (b.rsi ?? 100)); // เรียง RSI ต่ำสุดก่อน (ตัวที่น่าจับตาที่สุดขึ้นบน)
+
+  const tbody = document.getElementById('recoveryTabBody');
+  if(!tbody) return;
+  tbody.innerHTML = rows.map(r => {
+    const divCell = !r.isOversoldZone
+      ? `<span style="color:var(--muted);">—</span>`
+      : r.div?.status === 'divergence'
+        ? `<span style="color:var(--acc);">🔍 มี Divergence</span>`
+        : r.div?.status === 'none'
+          ? `<span style="color:var(--muted);">ไม่มีสัญญาณ</span>`
+          : `<span style="color:var(--warn);">⚠️ ข้อมูลไม่พอ</span>`;
+    const estimateCell = (r.isOversoldZone && r.div?.status === 'divergence' && stats.count >= 20)
+      ? `<span style="color:var(--text);">≈ ${stats.median}-${stats.avg} วัน</span>`
+      : `<span style="color:var(--muted);">—</span>`;
+    return `<tr>
+      <td style="font-weight:700;">${r.symbol}</td>
+      <td style="color:var(--muted);">${r.group||'—'}</td>
+      <td>$${(r.price||0).toLocaleString('en',{minimumFractionDigits:2})}</td>
+      <td style="color:${(r.rsi||50)<=35?'var(--danger)':(r.rsi||50)>=70?'var(--warn)':'var(--text)'};font-weight:700;">${r.rsi ?? '—'}</td>
+      <td style="color:${r.slColor};">${r.slLabel}</td>
+      <td>${divCell}</td>
+      <td>${estimateCell}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--muted);">ไม่มีข้อมูล</td></tr>`;
+}
+
+function previewRecoveryForecast() {
+  const stats = calcHistoricalRecoveryStats(30, 50);
+  const latest = getLatest();
+  const candidates = latest.filter(r => (r.rsi ?? 100) <= 35); // เอาเฉพาะตัวที่ใกล้/อยู่ในเขตเย็นตอนนี้
+
+  const rows = candidates.map(r => {
+    const div = detectRSIDivergence(r.symbol);
+    return { symbol: r.symbol, rsi: r.rsi, divergence: div?.status || 'unknown' };
+  });
+
+  const panel = document.getElementById('recoveryForecastPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+
+  if(stats.count < 20) {
+    panel.innerHTML = `<div style="color:var(--danger);font-family:var(--mono);font-size:11px;">
+      ⚠️ สถิติในอดีตยังมีแค่ ${stats.count} ครั้ง (ต้อง ≥20 ถึงจะเริ่มเชื่อ median/average ได้) — รอสะสมข้อมูลเพิ่ม
+    </div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      🆕 RECOVERY FORECAST (ทดลอง — ประมาณคร่าวๆ ไม่ใช่คำทำนายแม่นยำ) — ยังไม่เชื่อมเข้าการตัดสินใจจริง
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+      สถิติในอดีต (${stats.count} ครั้งที่เคยแตะ RSI≤30 แล้วฟื้นเหนือ 50 จริง):
+      median <b style="color:var(--acc);">${stats.median} วัน</b> ·
+      เฉลี่ย <b style="color:var(--acc);">${stats.avg} วัน</b>
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;">
+      ${rows.length === 0 ? '<div style="color:var(--muted);">ไม่มีตัวไหนอยู่ในเขตเย็น (RSI≤35) ตอนนี้</div>' : rows.map(r => `
+        <div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+          <span style="width:60px;font-weight:700;">${r.symbol}</span>
+          <span style="width:80px;color:var(--warn);">RSI ${r.rsi}</span>
+          <span style="width:140px;color:${r.divergence==='divergence'?'var(--acc)':'var(--muted)'};">
+            ${r.divergence==='divergence' ? '🔍 มี Divergence' : r.divergence==='none' ? '— ไม่มีสัญญาณ' : '⚠️ ข้อมูลไม่พอ'}
+          </span>
+          <span style="color:var(--muted);">
+            ${r.divergence==='divergence' ? `≈ ${stats.median}-${stats.avg} วัน (ประมาณจาก median/average)` : '—'}
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 function composite(r, maxPct50) {
