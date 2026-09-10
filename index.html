@@ -849,7 +849,11 @@ function trainForwardModel(days) {
   const heatArr = fwd.X.map(r => (r.heat_n - 1) / 2);
   const scrArr  = fwd.X.map(r => r.score > 4 ? (r.score - 4) / 4 : 0);
   const momArr  = fwd.X.map(r => r.ema50 > 0 ? Math.min(((r.ema20 - r.ema50) / r.ema50 * 100) / (maxPct || 1), 1) : 0);
-  const pctArr  = fwd.X.map(r => r.ema50 > 0 ? Math.min((r.ema20 / r.ema50 - 1) * 5, 1) : 0);
+  // แก้บั๊ก (2026-09-10): ของเดิม copy สูตรจาก autoTrain() มาผิด — ใช้ ema20/ema50 ซ้ำกับ EMAMom เป๊ะ
+  // (ตรวจแล้วพบว่า autoTrain() เดิมก็มีบั๊กเดียวกันฝังอยู่ แต่ยังไม่แก้ตรงนั้น เพราะต้อง retrain
+  // โมเดลที่ใช้งานจริงทั้งระบบใหม่ คนละขอบเขตจาก v1 นี้ — แก้เฉพาะ trainForwardModel() ก่อน)
+  // pct50 ที่ถูกต้องคือ "ราคาเทียบ EMA50" ใช้ field r.pct_ema50 ตรงๆ ที่มีอยู่แล้วทั่วทั้งระบบ
+  const pctArr  = fwd.X.map(r => (r.pct_ema50 || 0) / (maxPct || 1));
 
   // เก็บ sign ไว้ตั้งแต่แรก (ไม่ใช้ Math.abs ในเศษ) — ตามบทเรียนที่แก้ไปเมื่อคืนกับโมเดลเดิม
   const corrs = {
