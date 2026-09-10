@@ -543,7 +543,9 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
     <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
     <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
+    <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
     <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+    <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
       <div id="valueWeightsBody" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;line-height:1.9;"></div>
@@ -905,6 +907,59 @@ function runForwardModelTraining() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-family:var(--mono);font-size:11px;">
       <div><div style="color:var(--text);font-weight:700;margin-bottom:4px;">7D Model</div>${renderOne(r7)}</div>
       <div><div style="color:var(--text);font-weight:700;margin-bottom:4px;">14D Model</div>${renderOne(r14)}</div>
+    </div>
+  `;
+}
+
+// ============================================================
+// 🆕 Forward Convergence — v2 ของแผน "การบ้าน ML" — ทิศทางตรงกันไหมระหว่าง 7D กับ 14D model
+// v1 = แค่ "ทิศทาง" (บวก/ลบ) ไม่สนขนาด — ตามที่ตกลงกันไว้ (เหตุผล: ยังไม่มั่นใจขนาดตัวเลขพอจะเทียบกัน)
+// ใช้ weight จาก mlForwardModels[7]/[14] ที่เทรนไว้แล้ว คำนวณคะแนนของแต่ละหุ้น ณ ปัจจุบัน
+// ยังไม่เชื่อมเข้า composite()/aiLabel()/portfolioAction() เลย — เป็นแค่ตารางแสดงผลแยกอิสระ
+// ============================================================
+function calcForwardScore(r, days) {
+  const model = mlForwardModels[days];
+  if(!model) return null;
+  const w = model.weights;
+  const maxPct = Math.max(...getLatest().map(x => x.pct_ema50), 1);
+  const rsiN  = Math.max(0, (r.rsi - 30) / 70);
+  const heatN = (r.heat_n - 1) / 2;
+  const scrN  = r.score > 4 ? (r.score - 4) / 4 : 0;
+  const momN  = r.ema50 > 0 ? Math.min(((r.ema20 - r.ema50) / r.ema50 * 100) / (maxPct || 1), 1) : 0;
+  const pctN  = (r.pct_ema50 || 0) / (maxPct || 1);
+  return rsiN*w.RSI + heatN*w.Heat + pctN*w.pct50 + momN*w.EMAMom + scrN*w.Score;
+}
+
+function renderForwardConvergence() {
+  if(!mlForwardModels[7] || !mlForwardModels[14]) {
+    alert('ต้องกด "Train Forward 7D/14D" ให้เสร็จก่อนครับ (ยังไม่มีโมเดลให้ใช้คำนวณ)');
+    return;
+  }
+  const latest = getLatest();
+  const rows = latest.map(r => {
+    const s7  = calcForwardScore(r, 7);
+    const s14 = calcForwardScore(r, 14);
+    const agree = (s7 >= 0 && s14 >= 0) || (s7 < 0 && s14 < 0);
+    return { symbol: r.symbol, s7, s14, agree };
+  }).sort((a,b) => a.symbol.localeCompare(b.symbol));
+
+  const agreeCount = rows.filter(r => r.agree).length;
+  const panel = document.getElementById('forwardConvergencePanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      🆕 FORWARD CONVERGENCE 7D vs 14D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง) · ตรงกัน ${agreeCount}/${rows.length} ตัว
+    </div>
+    <div style="max-height:420px;overflow-y:auto;font-family:var(--mono);font-size:11px;">
+      ${rows.map(r => `
+        <div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+          <span style="width:60px;font-weight:700;">${r.symbol}</span>
+          <span style="color:${r.s7>=0?'var(--acc)':'var(--danger)'};width:90px;">7D: ${r.s7!=null?r.s7.toFixed(3):'—'}</span>
+          <span style="color:${r.s14>=0?'var(--acc)':'var(--danger)'};width:90px;">14D: ${r.s14!=null?r.s14.toFixed(3):'—'}</span>
+          <span>${r.agree ? '✅ ตรงกัน' : '❌ ขัดกัน'}</span>
+        </div>
+      `).join('')}
     </div>
   `;
 }
