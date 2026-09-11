@@ -552,9 +552,13 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
     <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
     <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
+    <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
+    <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
     <button class="ml-train-btn" id="recoveryForecastBtn" onclick="previewRecoveryForecast()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🆕 Recovery Forecast (ทดลอง — ประมาณคร่าวๆ)</button>
     <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
+    <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+    <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
     <div id="recoveryForecastPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
@@ -1712,6 +1716,159 @@ function recoveryTroughSince(symbol, coldRsiThreshold = 30) {
 // (1) ตรวจ RSI Bullish Divergence ของหุ้นตัวหนึ่ง ณ ตอนนี้
 // นิยาม: ราคาทำจุดต่ำใหม่ (lower low) แต่ RSI ไม่ทำจุดต่ำใหม่ตาม (higher low) = แรงขายเริ่มอ่อนลง
 // วิธีง่ายสุด (v1): แบ่งช่วงย้อนหลังเป็น 2 ครึ่ง หาจุดต่ำสุดของแต่ละครึ่ง เทียบกัน
+// ============================================================
+// 🆕 Snapshot History & Accuracy — ชั้น 3-4 ของ Rubric ที่ตกลงกันไว้
+// ยังคงหลักเดิม: อิสระ 100% ไม่เชื่อมเข้าการตัดสินใจจริง แค่เครื่องมือตรวจสอบตัวเอง
+// ============================================================
+
+// ดึง snapshot ทั้งหมดที่เคยบันทึกไว้ (ไม่กรอง is_active เพราะต้องการ "ทุกวัน" ไม่ใช่แค่ล่าสุด)
+async function loadSnapshotHistory() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_config?select=version,weights,trained_at&config_type=eq.forward-snapshot&order=trained_at.asc&limit=500`,
+      { headers: sb._hdr() }
+    );
+    if(!res.ok) { console.error('[loadSnapshotHistory] fetch failed', res.status); return []; }
+    const data = await res.json();
+    return data
+      .map(row => ({ date: row.weights?.snapshotDate, trained_at: row.trained_at, rows: row.weights?.rows || [] }))
+      .filter(s => s.date && s.rows.length > 0);
+  } catch(err) {
+    console.error('[loadSnapshotHistory] error', err);
+    return [];
+  }
+}
+
+// ชั้น 3 — สอดคล้องข้ามวัน: ดู % ตรงกัน (7D vs 14D) ของแต่ละวันที่มี snapshot ว่าคงที่ไหม
+async function renderSnapshotTrend() {
+  const panel = document.getElementById('snapshotTrendPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังโหลด...</div>`;
+
+  const history = await loadSnapshotHistory();
+  if(history.length === 0) {
+    panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">
+      ยังไม่มี snapshot สะสมไว้เลยครับ — ต้องกด "Forward Convergence" อย่างน้อย 1 ครั้งก่อน
+    </div>`;
+    return;
+  }
+
+  const rowsHtml = history.map(s => {
+    const agree    = s.rows.filter(r => r.status === 'agree').length;
+    const conflict = s.rows.filter(r => r.status === 'conflict').length;
+    const weak     = s.rows.filter(r => r.status === 'weak').length;
+    const pct = s.rows.length ? Math.round(agree / s.rows.length * 100) : 0;
+    return `<div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+      <span style="width:100px;">${s.date}</span>
+      <span style="color:var(--acc);width:60px;">✅${agree}</span>
+      <span style="color:var(--danger);width:60px;">❌${conflict}</span>
+      <span style="color:var(--muted);width:60px;">⚪${weak}</span>
+      <span>${pct}% ตรงกัน</span>
+    </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      📈 SNAPSHOT TREND (ชั้น 3 — สอดคล้องข้ามวัน) · ${history.length} วันที่มีข้อมูลสะสม
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;">${rowsHtml}</div>
+    <div style="margin-top:8px;font-size:9px;color:var(--muted);">
+      เกณฑ์: ถ้า % ตรงกันแกว่งไปมามาก (เช่น 90%→40%→85%) = ยังไม่เสถียร ไม่ควรเชื่อ ถ้าคงที่สูง (≥80%) หลายวันติด = เริ่มน่าเชื่อ
+    </div>
+  `;
+}
+
+// helper: หาราคาที่ใกล้ "วันที่ + offsetDays" ที่สุด ในขอบเขต ±tolerance วัน (กันวันหยุดตลาด)
+function findPriceNearDate(symbol, dateStr, offsetDays, tolerance = 1) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const target = new Date(y, m-1, d);
+  target.setDate(target.getDate() + offsetDays);
+
+  const rows = allRows.filter(r => r.symbol === symbol && r.price > 0);
+  const byDate = {};
+  rows.forEach(r => { byDate[dtKey(r).slice(0,10)] = r; });
+
+  for(let off = 0; off <= tolerance; off++) {
+    const signs = off === 0 ? [0] : [1,-1];
+    for(const sign of signs) {
+      const probe = new Date(target);
+      probe.setDate(probe.getDate() + sign*off);
+      const key = probe.getFullYear()+'-'+String(probe.getMonth()+1).padStart(2,'0')+'-'+String(probe.getDate()).padStart(2,'0');
+      if(byDate[key]) return byDate[key].price;
+    }
+  }
+  return null;
+}
+
+// ชั้น 4 — ทำนายถูกจริงไหม: เทียบทิศทางที่ทำนายไว้ (s7/s14) กับราคาจริงที่เกิดขึ้นจริง
+// เฉพาะ snapshot ที่ "อายุครบ" แล้วเท่านั้น (7 วันขึ้นไปถึงเช็ค 7D ได้, 14 วันขึ้นไปถึงเช็ค 14D ได้)
+async function checkSnapshotAccuracy() {
+  const history = await loadSnapshotHistory();
+  const today = new Date();
+  const results7 = [], results14 = [];
+
+  history.forEach(s => {
+    const [y,m,d] = s.date.split('-').map(Number);
+    const snapDate = new Date(y, m-1, d);
+    const daysSince = Math.floor((today - snapDate) / 86400000);
+
+    s.rows.forEach(r => {
+      if(daysSince >= 7 && r.s7 != null) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 7);
+        if(base != null && fut != null) {
+          const actualDir = fut > base ? 1 : -1;
+          const predDir   = r.s7 >= 0 ? 1 : -1;
+          results7.push({ symbol: r.symbol, date: s.date, correct: actualDir === predDir });
+        }
+      }
+      if(daysSince >= 14 && r.s14 != null) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 14);
+        if(base != null && fut != null) {
+          const actualDir = fut > base ? 1 : -1;
+          const predDir   = r.s14 >= 0 ? 1 : -1;
+          results14.push({ symbol: r.symbol, date: s.date, correct: actualDir === predDir });
+        }
+      }
+    });
+  });
+
+  const acc = arr => arr.length ? Math.round(arr.filter(x=>x.correct).length / arr.length * 100) : null;
+  return { acc7: acc(results7), n7: results7.length, acc14: acc(results14), n14: results14.length };
+}
+
+async function renderSnapshotAccuracy() {
+  const panel = document.getElementById('snapshotAccuracyPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ...</div>`;
+
+  const { acc7, n7, acc14, n14 } = await checkSnapshotAccuracy();
+
+  const fmt = (acc, n, label, needDays) => {
+    if(n === 0) return `<div style="color:var(--muted);">${label}: ยังไม่ถึงเวลาเช็คได้ (ต้องรอ snapshot มีอายุ ≥${needDays} วัน)</div>`;
+    const clr = acc >= 55 ? 'var(--acc)' : acc >= 45 ? 'var(--warn)' : 'var(--danger)';
+    return `<div>${label}: <b style="color:${clr};">${acc}%</b> ถูกทิศทาง (จาก ${n} ครั้งที่เช็คได้จริง)</div>`;
+  };
+
+  const panelEl = document.getElementById('snapshotAccuracyPanel');
+  panelEl.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      🎯 SNAPSHOT ACCURACY (ชั้น 4 — ทำนายถูกจริงไหม) · เทียบทิศทางที่ทำนายไว้กับราคาจริง
+    </div>
+    <div style="font-family:var(--mono);font-size:13px;line-height:2;">
+      ${fmt(acc7, n7, '7D', 7)}
+      ${fmt(acc14, n14, '14D', 14)}
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:var(--muted);">
+      เกณฑ์: &gt;50% = ดีกว่าเดา (แค่พอผ่าน) · ควร ≥55-60% ถึงจะเรียกว่ามีประโยชน์จริง (เทียบ BUY เดิม 28% = แย่กว่าเดามาก)
+    </div>
+  `;
+}
+
+
 function detectRSIDivergence(symbol, lookbackDays = 20) {
   const rows = allRows
     .filter(r => r.symbol === symbol && r.price > 0 && r.rsi != null && !isNaN(r.rsi))
