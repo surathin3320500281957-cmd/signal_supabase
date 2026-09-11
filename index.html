@@ -395,6 +395,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
   <button class="tab-btn" onclick="switchTab('stocklatest')">📊 สรุป Stock ล่าสุด</button>
   <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
+  <button class="tab-btn" onclick="switchTab('forward')">📊 Forward Model</button>
   <button class="tab-btn" onclick="switchTab('recovery')">🔮 Recovery Forecast</button>
 </div>
 
@@ -549,16 +550,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="trainBtn" onclick="runMLTrain()">⚡ Train ML</button>
     <button class="ml-train-btn" id="trainValueBtn" onclick="trainValueModel()" style="border-color:rgba(244,114,182,.5);color:#f472b6;">💎 Train Value</button>
     <button class="ml-export-btn" id="exportBtn" onclick="exportMLConfig()" disabled>💾 Save ML Config → Supabase</button>
-    <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
-    <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
-    <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
-    <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
-    <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
     <button class="ml-train-btn" id="recoveryForecastBtn" onclick="previewRecoveryForecast()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🆕 Recovery Forecast (ทดลอง — ประมาณคร่าวๆ)</button>
-    <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
-    <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
-    <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
-    <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
     <div id="recoveryForecastPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
     <div id="valueWeightsPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;">
       <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#f472b6;text-transform:uppercase;margin-bottom:8px;">💎 Value Model — Bounce Weights</div>
@@ -626,6 +618,36 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
       <button class="ml-export-btn" onclick="exportMLConfig()" style="padding:5px 14px;font-size:9px">💾 Download</button>
     </div>
     <pre id="mlConfigJson" style="font-family:var(--mono);font-size:10px;color:#8FCFBA;overflow-x:auto;line-height:1.6;max-height:280px;overflow-y:auto;margin-top:8px"></pre>
+  </div>
+</main>
+</div>
+
+<!-- 🆕 TAB: FORWARD MODEL (ทดลอง — ย้ายออกมาจาก ML Analyzer ตามคำแนะนำ 2026-09-11
+     เพราะมีหลายขั้นตอน (Preview → Train → Convergence → Snapshot Trend → Check Accuracy)
+     แยกเป็นเรื่องเฉพาะชัดเจนกว่าปนอยู่กับ ML Analyzer เดิมที่ใช้เทรนโมเดลที่ใช้งานจริง -->
+<div id="tab-forward" class="tab-content">
+<main>
+  <div class="ml-card" style="margin-bottom:16px;">
+    <div class="ml-card-title">📊 Forward Model 7D/14D — ทำนายผลตอบแทนล่วงหน้าแบบวันจริง</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8;margin-top:6px;">
+      ระบบทดลองคู่ขนาน — ต่างจาก ML Analyzer เดิมตรงที่ target คือ "ผลตอบแทนจริงในอนาคต"
+      (นับวันปฏิทินจริง ไม่ใช่จำนวนรอบ) ไม่ใช่ตำแหน่งเทียบ EMA50 ปัจจุบัน ยังไม่เชื่อมเข้า
+      composite()/aiLabel()/portfolioAction() เลยแม้แต่จุดเดียว — ขั้นตอนใช้งาน: Preview (เช็ค
+      sample พอไหม) → Train Forward (คำนวณ weight) → Convergence (เทียบ 7D vs 14D + บันทึก snapshot
+      อัตโนมัติ) → Snapshot Trend / Check Accuracy (ตรวจสอบว่าเชื่อได้แค่ไหน — ต้องรอเวลาสะสมข้อมูล)
+    </div>
+  </div>
+
+  <div class="ml-header-row">
+    <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
+    <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
+    <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
+    <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
+    <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
+    <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+    <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
+    <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+    <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
   </div>
 </main>
 </div>
@@ -741,7 +763,7 @@ const sb = {
 
 /* ============================================================ TABS */
 function switchTab(tab) {
-  const tabs = ['signal','portfolio','stocklatest','ml','recovery'];
+  const tabs = ['signal','portfolio','stocklatest','ml','forward','recovery'];
   tabs.forEach((t,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', t===tab);
     document.getElementById('tab-'+t).classList.toggle('active', t===tab);
@@ -1730,9 +1752,22 @@ async function loadSnapshotHistory() {
     );
     if(!res.ok) { console.error('[loadSnapshotHistory] fetch failed', res.status); return []; }
     const data = await res.json();
-    return data
+    const all = data
       .map(row => ({ date: row.weights?.snapshotDate, trained_at: row.trained_at, rows: row.weights?.rows || [] }))
       .filter(s => s.date && s.rows.length > 0);
+
+    // 🐛 แก้บั๊ก (2026-09-11): เดิมนับ "จำนวนครั้งที่กดปุ่ม" เป็น "จำนวนวัน" — ถ้ากด Convergence
+    // หลายรอบในวันเดียวกัน จะได้ snapshot ซ้ำวันเดียวกันหลายแถว (INSERT ไม่ใช่ UPSERT โดยตั้งใจ
+    // เพื่อไม่ทับของเก่า) แต่พอเอามานับ "วันที่มีข้อมูล" ต้องรวมให้เหลือ 1 แถวต่อวันก่อน ไม่งั้น
+    // ทั้งชั้น 3 (Snapshot Trend) และชั้น 4 (Check Accuracy) จะนับซ้ำผิดพลาดเหมือนกันทั้งคู่
+    // เก็บเฉพาะ snapshot "ล่าสุด" ของแต่ละวัน (trained_at มากสุด) เป็นตัวแทนวันนั้น
+    const byDateLatest = {};
+    all.forEach(s => {
+      if(!byDateLatest[s.date] || s.trained_at > byDateLatest[s.date].trained_at) {
+        byDateLatest[s.date] = s;
+      }
+    });
+    return Object.values(byDateLatest).sort((a,b) => a.date.localeCompare(b.date));
   } catch(err) {
     console.error('[loadSnapshotHistory] error', err);
     return [];
