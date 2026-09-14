@@ -668,13 +668,19 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 
   <div class="ml-table-wrap">
     <table class="ml-table">
-      <thead><tr>
-        <th>Symbol</th><th>Group</th><th>Price</th><th>RSI</th><th>SL Status</th>
-        <th>Divergence</th><th>ประมาณเวลาฟื้น (คร่าวๆ)</th>
+      <thead><tr id="recoveryTabHead">
+        <th data-col="symbol" data-label="Symbol" onclick="sortRecoveryTab('symbol')" style="cursor:pointer;user-select:none;">Symbol</th>
+        <th data-col="group" data-label="Group" onclick="sortRecoveryTab('group')" style="cursor:pointer;user-select:none;">Group</th>
+        <th data-col="price" data-label="Price" onclick="sortRecoveryTab('price')" style="cursor:pointer;user-select:none;">Price</th>
+        <th data-col="rsi" data-label="RSI" onclick="sortRecoveryTab('rsi')" style="cursor:pointer;user-select:none;">RSI ▲</th>
+        <th>SL Status</th>
+        <th data-col="divergence" data-label="Divergence" onclick="sortRecoveryTab('divergence')" style="cursor:pointer;user-select:none;">Divergence</th>
+        <th>ประมาณเวลาฟื้น (คร่าวๆ)</th>
       </tr></thead>
       <tbody id="recoveryTabBody"></tbody>
     </table>
   </div>
+  <div style="font-size:9px;color:var(--muted);margin-top:6px;font-family:var(--mono);">💡 กดหัวตาราง (Symbol/Group/Price/RSI/Divergence) เพื่อเรียงลำดับ กดซ้ำเพื่อสลับทิศ</div>
 </main>
 </div>
 
@@ -1978,8 +1984,14 @@ function calcHistoricalRecoveryStats(coldRsiThreshold = 30, hotRsiThreshold = 50
 // (4) 🆕 renderRecoveryTab — เวอร์ชันเต็มสำหรับแท็บใหม่ (ครบทุกตัว ไม่ใช่แค่ตัวที่ oversold)
 // ต่างจาก previewRecoveryForecast() (ที่กรองแค่ RSI≤35 แสดงใน panel เล็ก) — ตัวนี้โชว์ทุกตัว
 // ในตารางเต็ม ตัวที่ไม่ได้ oversold จะโชว์ "—" ในช่อง Divergence/ประมาณเวลา (ไม่มีอะไรให้ประมาณ)
+// 🆕 เก็บ rows ล่าสุดไว้ใน memory เพื่อให้เรียงคอลัมน์ได้โดยไม่ต้องคำนวณใหม่ทั้งหมด
+let recoveryTabRows = [];
+let recoveryTabSort = { col: 'rsi', dir: 1 }; // ค่าเริ่มต้น: RSI น้อยไปมาก (ตัวน่าจับตาสุดขึ้นก่อน)
+let recoveryTabStats = { count: 0, median: null, avg: null };
+
 function renderRecoveryTab() {
   const stats = calcHistoricalRecoveryStats(30, 50);
+  recoveryTabStats = stats;
   const noteEl = document.getElementById('recoveryStatsNote');
   if(noteEl) {
     noteEl.innerHTML = stats.count < 20
@@ -1988,7 +2000,7 @@ function renderRecoveryTab() {
   }
 
   const latest = getLatest();
-  const rows = latest.map(r => {
+  recoveryTabRows = latest.map(r => {
     const isOversoldZone = (r.rsi ?? 100) <= 35;
     const div = isOversoldZone ? detectRSIDivergence(r.symbol) : null;
     const trough = recoveryTroughSince(r.symbol);
@@ -1998,12 +2010,46 @@ function renderRecoveryTab() {
       slLabel = stillHot ? '🟢 กำลังฟื้น' : '—';
       slColor = stillHot ? 'var(--acc)' : 'var(--muted)';
     }
-    return { symbol: r.symbol, group: r.group, price: r.price, rsi: r.rsi, slLabel, slColor, div, isOversoldZone };
-  }).sort((a,b) => (a.rsi ?? 100) - (b.rsi ?? 100)); // เรียง RSI ต่ำสุดก่อน (ตัวที่น่าจับตาที่สุดขึ้นบน)
+    // divPriority: ใช้จัดลำดับตอนเรียงคอลัมน์ Divergence (2=มี, 1=ไม่มีสัญญาณ, 0=ข้อมูลไม่พอ, -1=ไม่ใช่โซน oversold)
+    const divPriority = !isOversoldZone ? -1 : div?.status === 'divergence' ? 2 : div?.status === 'none' ? 1 : 0;
+    return { symbol: r.symbol, group: r.group||'', price: r.price||0, rsi: r.rsi ?? 999, slLabel, slColor, div, isOversoldZone, divPriority };
+  });
 
+  renderRecoveryTabBody();
+}
+
+// 🆕 เรียงคอลัมน์ — กดหัวตารางซ้ำ = สลับทิศ (น้อย→มาก / มาก→น้อย)
+function sortRecoveryTab(col) {
+  if(recoveryTabSort.col === col) {
+    recoveryTabSort.dir *= -1; // กดซ้ำคอลัมน์เดิม สลับทิศ
+  } else {
+    recoveryTabSort = { col, dir: 1 };
+  }
+  renderRecoveryTabBody();
+}
+
+function renderRecoveryTabBody() {
+  const { col, dir } = recoveryTabSort;
+  const colMap = {
+    symbol: 'symbol', group: 'group', price: 'price', rsi: 'rsi', divergence: 'divPriority',
+  };
+  const key = colMap[col] || 'rsi';
+  const sorted = [...recoveryTabRows].sort((a,b) => {
+    const av = a[key], bv = b[key];
+    if(typeof av === 'string') return dir * String(av).localeCompare(String(bv));
+    return dir * ((av||0) - (bv||0));
+  });
+
+  // อัพเดต indicator ลูกศรที่หัวตาราง (▲/▼ เฉพาะคอลัมน์ที่เรียงอยู่)
+  document.querySelectorAll('#recoveryTabHead th[data-col]').forEach(th => {
+    const isActive = th.getAttribute('data-col') === col;
+    th.innerHTML = th.getAttribute('data-label') + (isActive ? (dir === 1 ? ' ▲' : ' ▼') : '');
+  });
+
+  const stats = recoveryTabStats;
   const tbody = document.getElementById('recoveryTabBody');
   if(!tbody) return;
-  tbody.innerHTML = rows.map(r => {
+  tbody.innerHTML = sorted.map(r => {
     const divCell = !r.isOversoldZone
       ? `<span style="color:var(--muted);">—</span>`
       : r.div?.status === 'divergence'
@@ -2018,7 +2064,7 @@ function renderRecoveryTab() {
       <td style="font-weight:700;">${r.symbol}</td>
       <td style="color:var(--muted);">${r.group||'—'}</td>
       <td>$${(r.price||0).toLocaleString('en',{minimumFractionDigits:2})}</td>
-      <td style="color:${(r.rsi||50)<=35?'var(--danger)':(r.rsi||50)>=70?'var(--warn)':'var(--text)'};font-weight:700;">${r.rsi ?? '—'}</td>
+      <td style="color:${(r.rsi||50)<=35?'var(--danger)':(r.rsi||50)>=70?'var(--warn)':'var(--text)'};font-weight:700;">${r.rsi===999?'—':r.rsi}</td>
       <td style="color:${r.slColor};">${r.slLabel}</td>
       <td>${divCell}</td>
       <td>${estimateCell}</td>
