@@ -1970,8 +1970,11 @@ function computeMarketSignalSnapshot() {
   const fearProxy = Math.round((avgSmartRank / 10) * 100);
 
   // Breadth
-  const bullish = latest.filter(r => r.trend === 'UP').length;
-  const bearish = latest.filter(r => r.trend === 'DOWN').length;
+  // 🐛 แก้บั๊ก (2026-09-15): allRows[i].trend เก็บเป็น '🟢 UP'/'🔴 DOWN'/'🟡 SIDE' (มี emoji นำหน้า)
+  // ไม่ใช่ 'UP'/'DOWN' ดิบๆ ตามที่เข้าใจผิดตอนแรก (ดู normalizeRowObj/newRows mapping บรรทัด ~1307)
+  // เทียบ === ตรงๆ เลยได้ 0 ทั้งคู่เสมอ ไม่ว่าข้อมูลจะเป็นยังไง — แก้เป็น .includes() แทน
+  const bullish = latest.filter(r => (r.trend||'').includes('UP')).length;
+  const bearish = latest.filter(r => (r.trend||'').includes('DOWN')).length;
 
   // Divergence % — เฉพาะตัวที่อยู่โซน oversold (RSI≤35) เท่านั้นที่เช็ค (ตรงกับ Recovery Forecast)
   const oversold = latest.filter(r => (r.rsi ?? 100) <= 35);
