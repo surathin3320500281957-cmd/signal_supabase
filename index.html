@@ -681,6 +681,16 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     </table>
   </div>
   <div style="font-size:9px;color:var(--muted);margin-top:6px;font-family:var(--mono);">💡 กดหัวตาราง (Symbol/Group/Price/RSI/Divergence) เพื่อเรียงลำดับ กดซ้ำเพื่อสลับทิศ</div>
+
+  <div class="ml-card" style="margin-top:20px;">
+    <div class="ml-card-title">📡 Market Signal Log — เชื่อม Fear/Breadth/Divergence (ทดลอง)</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.8;margin-top:6px;">
+      บันทึกทั้ง 4 ค่าพร้อมกันทุกครั้งที่กด (Fear-equivalent, Bullish/Bearish count, Divergence %)
+      เพื่อดูเทียบกันข้ามวันว่าสัมพันธ์กันแบบไหน — ยังไม่คำนวณ correlation จริง (ต้องมีข้อมูลหลายสิบวัน) แค่ log ให้ดูด้วยตาไปก่อน
+    </div>
+    <button class="ml-train-btn" id="marketSignalBtn" onclick="renderMarketSignalLog()" style="margin-top:12px;border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📡 บันทึก + ดู Market Signal Log</button>
+    <div id="marketSignalPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+  </div>
 </main>
 </div>
 
@@ -1942,6 +1952,117 @@ function detectRSIDivergence(symbol, lookbackDays = 20) {
 
 // (2) สแกนประวัติ "ทุกครั้งที่เคยแตะ RSI≤coldThreshold แล้วฟื้นขึ้นเหนือ hotThreshold ได้จริง"
 // ของทุกตัว ทุกช่วงเวลาในอดีต — เก็บ "ใช้เวลากี่วัน" ของแต่ละครั้ง แล้วสรุปเป็น median/average
+
+// ============================================================
+// 🆕 Market Signal Log — เชื่อม Fear/Breadth/Divergence เข้าด้วยกัน (2026-09-15)
+// ต่อยอดจากคำถาม "Divergence เยอะขึ้น = สัญญาณกระทิงไหม" — backend มีข้อมูลพอคำนวณ
+// Fear-equivalent + Breadth เองได้ (smartRank/trend มีอยู่แล้วใน allRows) ไม่ต้องพึ่ง frontend
+// ⚠️ นี่คือ "Fear-equivalent" ไม่ใช่ Fear Index ตัวเดียวกับที่ frontend โชว์เป๊ะ — สูตรเดียวกัน
+// (avg(smartRank)/10*100) แต่คำนวณจาก stock_signals (ข้อมูลล่าสุดที่ save ไว้) ไม่ใช่ live fetch
+// ยังไม่คำนวณ correlation coefficient จริง — sample ยังน้อยเกินไป แค่ log ให้เทียบด้วยตาก่อน
+// ============================================================
+function computeMarketSignalSnapshot() {
+  const latest = getLatest();
+  const n = latest.length || 1;
+
+  // Fear-equivalent — สูตรเดียวกับ frontend เป๊ะ (avg smartRank /10*100)
+  const avgSmartRank = latest.reduce((s,r) => s + (r.smartRank||0), 0) / n;
+  const fearProxy = Math.round((avgSmartRank / 10) * 100);
+
+  // Breadth
+  const bullish = latest.filter(r => r.trend === 'UP').length;
+  const bearish = latest.filter(r => r.trend === 'DOWN').length;
+
+  // Divergence % — เฉพาะตัวที่อยู่โซน oversold (RSI≤35) เท่านั้นที่เช็ค (ตรงกับ Recovery Forecast)
+  const oversold = latest.filter(r => (r.rsi ?? 100) <= 35);
+  const divergentCount = oversold.filter(r => detectRSIDivergence(r.symbol)?.status === 'divergence').length;
+  const divergencePct = Math.round(divergentCount / n * 100);
+
+  return {
+    date: new Date().toISOString().slice(0,10),
+    time: new Date().toISOString(),
+    fearProxy, bullish, bearish,
+    oversoldCount: oversold.length, divergentCount, divergencePct,
+    total: latest.length,
+  };
+}
+
+async function saveMarketSignalSnapshot(snap) {
+  const versionKey = 'market-signal-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify([{
+        version:      versionKey,
+        config_type:  'market-signal-log',
+        weights:      snap,
+        thresholds:   {}, normalize: {}, correlations: {}, group_regime: {},
+        note:         `Market Signal snapshot — Fear≈${snap.fearProxy}, Bull/Bear ${snap.bullish}/${snap.bearish}, Divergence ${snap.divergencePct}%`,
+        is_active:    true,
+        trained_at:   new Date().toISOString(),
+      }]),
+    });
+    if(!res.ok) { const e = await res.json().catch(()=>({})); console.error('[saveMarketSignalSnapshot] insert failed', e); return false; }
+    return true;
+  } catch(err) {
+    console.error('[saveMarketSignalSnapshot] error', err);
+    return false;
+  }
+}
+
+async function loadMarketSignalHistory() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_config?select=weights,trained_at&config_type=eq.market-signal-log&order=trained_at.asc&limit=500`,
+      { headers: sb._hdr() }
+    );
+    if(!res.ok) return [];
+    const data = await res.json();
+    const all = data.map(row => ({ ...row.weights, trained_at: row.trained_at })).filter(s => s.date);
+    // เก็บแค่ snapshot ล่าสุดของแต่ละวัน (เหตุผลเดียวกับ loadSnapshotHistory — กันนับ "จำนวนครั้งกด" เป็น "จำนวนวัน")
+    const byDateLatest = {};
+    all.forEach(s => { if(!byDateLatest[s.date] || s.trained_at > byDateLatest[s.date].trained_at) byDateLatest[s.date] = s; });
+    return Object.values(byDateLatest).sort((a,b) => a.date.localeCompare(b.date));
+  } catch(err) {
+    console.error('[loadMarketSignalHistory] error', err);
+    return [];
+  }
+}
+
+async function renderMarketSignalLog() {
+  const panel = document.getElementById('marketSignalPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังบันทึกและโหลด...</div>`;
+
+  const snap = computeMarketSignalSnapshot();
+  const saved = await saveMarketSignalSnapshot(snap);
+  const history = await loadMarketSignalHistory();
+
+  const rowsHtml = history.map(s => `
+    <div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:11px;">
+      <span style="width:100px;">${s.date}</span>
+      <span style="color:${s.fearProxy>=70?'var(--acc)':s.fearProxy<=35?'var(--danger)':'var(--warn)'};width:110px;">Fear≈${s.fearProxy}</span>
+      <span style="color:var(--acc);width:90px;">🐂${s.bullish}</span>
+      <span style="color:var(--danger);width:90px;">🐻${s.bearish}</span>
+      <span style="color:var(--text);">Divergence ${s.divergencePct}% (${s.divergentCount}/${s.total})</span>
+    </div>
+  `).join('');
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
+      📡 MARKET SIGNAL LOG (ทดลอง — ${saved ? '💾 บันทึกแล้ว' : '⚠️ บันทึกไม่สำเร็จ'}) · ${history.length} วันที่มีข้อมูลสะสม
+    </div>
+    <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">
+      ⚠️ Fear≈ คำนวณจาก stock_signals (คนละแหล่งจาก Fear Index หน้า frontend เล็กน้อย — ดูแนวโน้มเทียบกัน ไม่ใช่ตัวเลขเป๊ะเดียวกัน)
+      ยังไม่พอจะคำนวณ correlation จริง (ต้องมีหลายสิบวันขึ้นไป) — นี่คือ log ให้ดูด้วยตาไปก่อน
+    </div>
+    <div>${rowsHtml || '<div style="color:var(--muted);">ยังไม่มีข้อมูล</div>'}</div>
+  `;
+}
+
+
 function calcHistoricalRecoveryStats(coldRsiThreshold = 30, hotRsiThreshold = 50) {
   const bySym = {};
   allRows.forEach(r => {
