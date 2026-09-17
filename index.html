@@ -1066,12 +1066,27 @@ function renderForwardConvergence() {
     else if(Math.abs(s7) < NO_SIGNAL && Math.abs(s14) < NO_SIGNAL) status = 'weak';
     else if((s7 >= 0 && s14 >= 0) || (s7 < 0 && s14 < 0)) status = 'agree';
     else status = 'conflict';
-    return { symbol: r.symbol, s7, s14, status };
+
+    // 🆕 quadrant — แยกละเอียดกว่า status เดิม เพื่อโชว์ "ทิศทาง" จริง ไม่ใช่แค่ตรง/ไม่ตรง
+    // (status เดิมใช้กับ saveForwardSnapshot/นับสรุปด้านบนต่อเหมือนเดิม ไม่แตะ — อันนี้ใช้แสดงผลเพิ่มเท่านั้น)
+    let quadrant;
+    if(status === 'unknown') quadrant = 'unknown';
+    else if(status === 'weak') quadrant = 'weak';
+    else if(s7 >= 0 && s14 >= 0) quadrant = 'both_up';
+    else if(s7 < 0 && s14 < 0) quadrant = 'both_down';
+    else if(s7 >= 0 && s14 < 0) quadrant = 'up_down';
+    else quadrant = 'down_up';
+
+    return { symbol: r.symbol, s7, s14, status, quadrant };
   }).sort((a,b) => a.symbol.localeCompare(b.symbol));
 
   const agreeCount    = rows.filter(r => r.status === 'agree').length;
   const conflictCount = rows.filter(r => r.status === 'conflict').length;
   const weakCount     = rows.filter(r => r.status === 'weak').length;
+  const bothUpCount   = rows.filter(r => r.quadrant === 'both_up').length;
+  const bothDownCount = rows.filter(r => r.quadrant === 'both_down').length;
+  const upDownCount   = rows.filter(r => r.quadrant === 'up_down').length;
+  const downUpCount   = rows.filter(r => r.quadrant === 'down_up').length;
 
   // 🆕 บันทึกอัตโนมัติทุกครั้งที่กดปุ่มนี้ — fire-and-forget ไม่รอ ไม่บล็อคการแสดงผลตาราง
   // (fail gracefully: ถ้า save ไม่สำเร็จ ตารางยังโชว์ปกติ แค่ไม่มี snapshot ของรอบนี้เก็บไว้)
@@ -1087,13 +1102,23 @@ function renderForwardConvergence() {
     unknown:  '— ไม่มีข้อมูล',
   };
 
+  // 🆕 badge ละเอียดตามทิศทางจริง (4 กรณี) — ใช้แทน badgeMap เดิมในตาราง
+  const quadrantBadgeMap = {
+    both_up:   '✅ 🐂🐂 ตรงกันขึ้น (++)',
+    both_down: '✅ 🐻🐻 ตรงกันลง (--)',
+    up_down:   '❌ 🐂🐻 ขัดกัน 7D+/14D- (+/-)',
+    down_up:   '❌ 🐻🐂 ขัดกัน 7D-/14D+ (-/+)',
+    weak:      '⚪ ไม่มีสัญญาณ',
+    unknown:   '— ไม่มีข้อมูล',
+  };
+
   const panel = document.getElementById('forwardConvergencePanel');
   if(!panel) return;
   panel.style.display = 'block';
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
       🆕 FORWARD CONVERGENCE 7D vs 14D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง)<br>
-      ✅ ตรงกัน ${agreeCount} · ❌ ขัดกันจริง ${conflictCount} · ⚪ ไม่มีสัญญาณ ${weakCount} · รวม ${rows.length} ตัว
+      ✅ ตรงกัน ${agreeCount} (🐂🐂${bothUpCount} · 🐻🐻${bothDownCount}) · ❌ ขัดกันจริง ${conflictCount} (🐂🐻${upDownCount} · 🐻🐂${downUpCount}) · ⚪ ไม่มีสัญญาณ ${weakCount} · รวม ${rows.length} ตัว
       · <span id="fwdSnapshotNote" style="color:var(--muted);">⏳ กำลังบันทึก...</span>
     </div>
     <div style="max-height:420px;overflow-y:auto;font-family:var(--mono);font-size:11px;">
@@ -1102,7 +1127,7 @@ function renderForwardConvergence() {
           <span style="width:60px;font-weight:700;">${r.symbol}</span>
           <span style="color:${r.s7>=0?'var(--acc)':'var(--danger)'};width:90px;">7D: ${r.s7!=null?r.s7.toFixed(3):'—'}</span>
           <span style="color:${r.s14>=0?'var(--acc)':'var(--danger)'};width:90px;">14D: ${r.s14!=null?r.s14.toFixed(3):'—'}</span>
-          <span>${badgeMap[r.status]}</span>
+          <span>${quadrantBadgeMap[r.quadrant]}</span>
         </div>
       `).join('')}
     </div>
@@ -1793,6 +1818,18 @@ async function loadSnapshotHistory() {
 }
 
 // ชั้น 3 — สอดคล้องข้ามวัน: ดู % ตรงกัน (7D vs 14D) ของแต่ละวันที่มี snapshot ว่าคงที่ไหม
+// helper: คืนค่า quadrant ของแถว snapshot — รองรับทั้งข้อมูลเก่า (ยังไม่มี field quadrant
+// เพราะบันทึกไว้ก่อนอัพเดตนี้) และข้อมูลใหม่ (มี quadrant ติดมาด้วยจาก renderForwardConvergence)
+function getRowQuadrant(r) {
+  if(r.quadrant) return r.quadrant;
+  if(r.status === 'weak') return 'weak';
+  if(r.status === 'unknown' || r.s7 == null || r.s14 == null) return 'unknown';
+  if(r.s7 >= 0 && r.s14 >= 0) return 'both_up';
+  if(r.s7 < 0 && r.s14 < 0) return 'both_down';
+  if(r.s7 >= 0 && r.s14 < 0) return 'up_down';
+  return 'down_up';
+}
+
 async function renderSnapshotTrend() {
   const panel = document.getElementById('snapshotTrendPanel');
   if(!panel) return;
@@ -1808,14 +1845,19 @@ async function renderSnapshotTrend() {
   }
 
   const rowsHtml = history.map(s => {
-    const agree    = s.rows.filter(r => r.status === 'agree').length;
-    const conflict = s.rows.filter(r => r.status === 'conflict').length;
-    const weak     = s.rows.filter(r => r.status === 'weak').length;
+    const bothUp   = s.rows.filter(r => getRowQuadrant(r) === 'both_up').length;
+    const bothDown = s.rows.filter(r => getRowQuadrant(r) === 'both_down').length;
+    const upDown   = s.rows.filter(r => getRowQuadrant(r) === 'up_down').length;
+    const downUp   = s.rows.filter(r => getRowQuadrant(r) === 'down_up').length;
+    const weak     = s.rows.filter(r => getRowQuadrant(r) === 'weak').length;
+    const agree    = bothUp + bothDown;
     const pct = s.rows.length ? Math.round(agree / s.rows.length * 100) : 0;
-    return `<div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+    return `<div style="display:flex;gap:12px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);flex-wrap:wrap;">
       <span style="width:100px;">${s.date}</span>
-      <span style="color:var(--acc);width:60px;">✅${agree}</span>
-      <span style="color:var(--danger);width:60px;">❌${conflict}</span>
+      <span style="color:var(--acc);width:70px;">🐂🐂${bothUp}</span>
+      <span style="color:var(--danger);width:70px;">🐻🐻${bothDown}</span>
+      <span style="color:#facc15;width:70px;">🐂🐻${upDown}</span>
+      <span style="color:#facc15;width:70px;">🐻🐂${downUp}</span>
       <span style="color:var(--muted);width:60px;">⚪${weak}</span>
       <span>${pct}% ตรงกัน</span>
     </div>`;
@@ -1823,11 +1865,12 @@ async function renderSnapshotTrend() {
 
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
-      📈 SNAPSHOT TREND (ชั้น 3 — สอดคล้องข้ามวัน) · ${history.length} วันที่มีข้อมูลสะสม
+      📈 SNAPSHOT TREND (ชั้น 3 — สอดคล้องข้ามวัน) · ${history.length} วันที่มีข้อมูลสะสม · แยกตาม 4 กรณีแล้ว (🐂🐂/🐻🐻/🐂🐻/🐻🐂)
     </div>
     <div style="font-family:var(--mono);font-size:11px;">${rowsHtml}</div>
     <div style="margin-top:8px;font-size:9px;color:var(--muted);">
-      เกณฑ์: ถ้า % ตรงกันแกว่งไปมามาก (เช่น 90%→40%→85%) = ยังไม่เสถียร ไม่ควรเชื่อ ถ้าคงที่สูง (≥80%) หลายวันติด = เริ่มน่าเชื่อ
+      เกณฑ์: ถ้า % ตรงกันแกว่งไปมามาก (เช่น 90%→40%→85%) = ยังไม่เสถียร ไม่ควรเชื่อ ถ้าคงที่สูง (≥80%) หลายวันติด = เริ่มน่าเชื่อ ·
+      snapshot ก่อนอัพเดตนี้อาจไม่มี field quadrant ตรงๆ — ระบบคำนวณย้อนหลังจาก s7/s14 ให้อัตโนมัติ
     </div>
   `;
 }
