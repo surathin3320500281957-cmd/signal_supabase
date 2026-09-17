@@ -644,10 +644,12 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
     <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
     <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
+    <button class="ml-train-btn" id="quadrantAccuracyBtn" onclick="renderQuadrantAccuracy()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🧭 Accuracy แยกตามคู่สัญญาณ (4 กรณี)</button>
     <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
     <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
+    <div id="quadrantAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
   </div>
 </main>
 </div>
@@ -1915,6 +1917,126 @@ async function renderSnapshotAccuracy() {
     </div>
     <div style="margin-top:8px;font-size:9px;color:var(--muted);">
       เกณฑ์: &gt;50% = ดีกว่าเดา (แค่พอผ่าน) · ควร ≥55-60% ถึงจะเรียกว่ามีประโยชน์จริง (เทียบ BUY เดิม 28% = แย่กว่าเดามาก)
+    </div>
+  `;
+}
+
+// ============================================================
+// 🆕 Accuracy แยกตามคู่สัญญาณ (4 กรณี) — 2026-09-18
+// ต่อยอดจากไอเดีย: จัดกลุ่ม snapshot ตาม sign(s7)/sign(s14) เป็น 4 quadrant
+// (++, --, +/-, -/+) แล้วเช็คความแม่นยำแยกแต่ละกลุ่ม แทนที่จะดูภาพรวมเดียว
+// เหตุผล: การให้ -/+ ("ขัดกัน อาจเป็นจุดเปลี่ยนขึ้น") มีความหมายพิเศษกว่า +/-
+// ("ขัดกัน ระวัง/แย่") เป็นแค่สมมติฐานทางทฤษฎี — ต้องพิสูจน์ด้วยข้อมูลจริงของระบบนี้ก่อน
+// ใช้ snapshot history + findPriceNearDate ชุดเดียวกับ checkSnapshotAccuracy() เป๊ะ
+// ไม่มีการเก็บข้อมูลใหม่ ไม่แตะตารางไหนเพิ่ม
+// ============================================================
+async function checkQuadrantAccuracy() {
+  const history = await loadSnapshotHistory();
+  const today = new Date();
+
+  const buckets = {
+    both_up:   { label: '🐂🐂 ทั้งคู่บวก (++)',      results7: [], results14: [] },
+    both_down: { label: '🐻🐻 ทั้งคู่ลบ (--)',        results7: [], results14: [] },
+    up_down:   { label: '🐂🐻 7D+ / 14D- (+/-)',      results7: [], results14: [] },
+    down_up:   { label: '🐻🐂 7D- / 14D+ (-/+)',      results7: [], results14: [] },
+  };
+
+  history.forEach(s => {
+    const [y,m,d] = s.date.split('-').map(Number);
+    const snapDate = new Date(y, m-1, d);
+    const daysSince = Math.floor((today - snapDate) / 86400000);
+
+    s.rows.forEach(r => {
+      if(r.s7 == null || r.s14 == null) return; // ต้องมีครบทั้งคู่ถึงจะจัด quadrant ได้ (ตัด "ไม่มีสัญญาณ" ออก)
+      const sign7  = r.s7  >= 0 ? 1 : -1;
+      const sign14 = r.s14 >= 0 ? 1 : -1;
+      const key = sign7===1 && sign14===1 ? 'both_up'
+                : sign7===-1 && sign14===-1 ? 'both_down'
+                : sign7===1 && sign14===-1 ? 'up_down'
+                : 'down_up';
+
+      if(daysSince >= 7) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 7);
+        if(base != null && fut != null) {
+          const actualDir = fut > base ? 1 : -1;
+          buckets[key].results7.push({ correct: actualDir === sign7 });
+        }
+      }
+      if(daysSince >= 14) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 14);
+        if(base != null && fut != null) {
+          const actualDir = fut > base ? 1 : -1;
+          buckets[key].results14.push({ correct: actualDir === sign14 });
+        }
+      }
+    });
+  });
+
+  const acc = arr => arr.length ? Math.round(arr.filter(x=>x.correct).length / arr.length * 100) : null;
+  const out = {};
+  Object.keys(buckets).forEach(k => {
+    out[k] = {
+      label: buckets[k].label,
+      acc7:  acc(buckets[k].results7),  n7:  buckets[k].results7.length,
+      acc14: acc(buckets[k].results14), n14: buckets[k].results14.length,
+    };
+  });
+  return out;
+}
+
+async function renderQuadrantAccuracy() {
+  const panel = document.getElementById('quadrantAccuracyPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ...</div>`;
+
+  const result = await checkQuadrantAccuracy();
+
+  const fmtCell = (acc, n) => {
+    if(n === 0) return `<span style="color:var(--muted);">— ยังไม่มีข้อมูลพอ</span>`;
+    const clr = acc >= 55 ? 'var(--acc)' : acc >= 45 ? 'var(--warn)' : 'var(--danger)';
+    return `<b style="color:${clr};">${acc}%</b> <span style="color:var(--muted);">(n=${n})</span>`;
+  };
+
+  const rowsHtml = Object.values(result).map(r => `
+    <div style="display:flex;gap:16px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05);align-items:center;">
+      <span style="width:220px;">${r.label}</span>
+      <span style="width:170px;">7D: ${fmtCell(r.acc7, r.n7)}</span>
+      <span>14D: ${fmtCell(r.acc14, r.n14)}</span>
+    </div>
+  `).join('');
+
+  // เทียบ -/+ vs +/- ตรงๆ (จุดที่ทฤษฎีอ้างว่า -/+ ควรมีความหมายพิเศษกว่า)
+  const downUp = result.down_up, upDown = result.up_down;
+  let compareNote = '';
+  if(downUp.n14 >= 5 && upDown.n14 >= 5) {
+    const diff = downUp.acc14 - upDown.acc14;
+    if(Math.abs(diff) < 8) {
+      compareNote = `⚖️ 14D accuracy ของ -/+ (${downUp.acc14}%) กับ +/- (${upDown.acc14}%) ใกล้เคียงกัน — <b>ยังไม่มีหลักฐานว่า -/+ พิเศษกว่าจริง</b> ไม่ควรให้สีเขียว/น้ำหนักสูงกว่า +/- ในระบบนี้`;
+    } else if(diff > 0) {
+      compareNote = `✅ -/+ (${downUp.acc14}%) แม่นกว่า +/- (${upDown.acc14}%) จริงในข้อมูลชุดนี้ — <b>เริ่มมีหลักฐานสนับสนุนไอเดียนี้</b> แต่ n ยังน้อย ควรสะสมเพิ่มก่อนเชื่อเต็มที่`;
+    } else {
+      compareNote = `❌ -/+ (${downUp.acc14}%) แม่นน้อยกว่า +/- (${upDown.acc14}%) จริง — <b>ตรงข้ามกับสมมติฐานเดิม</b> ไม่ควรให้ -/+ สีเขียวพิเศษ`;
+    }
+  } else {
+    compareNote = `⏳ n ยังน้อยเกินไป (-/+ : n=${downUp.n14}, +/- : n=${upDown.n14}) ต้องมีอย่างน้อย 5 ครั้งต่อกลุ่มถึงจะเทียบได้อย่างมีความหมาย`;
+  }
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#fbbf24;margin-bottom:10px;">
+      🧭 ACCURACY แยกตามคู่สัญญาณ (4 กรณี) · จัดกลุ่มตาม sign(7D)/sign(14D) แล้วเช็คแม่นยำแยกกัน
+    </div>
+    <div style="font-family:var(--mono);font-size:12px;">
+      ${rowsHtml}
+    </div>
+    <div style="margin-top:10px;padding:10px;background:rgba(251,191,36,.08);border-radius:6px;font-size:11px;line-height:1.6;">
+      ${compareNote}
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:var(--muted);">
+      หมายเหตุ: นับเฉพาะแถวที่มีค่าครบทั้ง s7 และ s14 (ตัด "ไม่มีสัญญาณ" ออก) · accuracy ของแต่ละกรณีเช็คแยกทิศทาง 7D และ 14D อิสระจากกัน ·
+      ยังไม่ใช้ผลนี้ตัดสินใจเทรดจริง เป็นแค่การทดสอบสมมติฐานก่อน
     </div>
   `;
 }
