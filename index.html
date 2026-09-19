@@ -2123,7 +2123,7 @@ async function renderPriceTimeline() {
     const predPrice7   = predReturn7  != null && priceNow > 0 ? priceNow * (1 + predReturn7/100)  : null;
     const predPrice14  = predReturn14 != null && priceNow > 0 ? priceNow * (1 + predReturn14/100) : null;
 
-    return { symbol: r.symbol, quadrant, price14ago, price7ago, priceNow, predReturn7, predReturn14, predPrice7, predPrice14 };
+    return { symbol: r.symbol, quadrant, s7, s14, price14ago, price7ago, priceNow, predReturn7, predReturn14, predPrice7, predPrice14 };
   }).filter(r => r.price14ago != null || r.price7ago != null) // ตัดตัวที่ไม่มีข้อมูลราคาย้อนหลังเลยออก กันแถวว่างเปล่า
     .sort((a,b) => a.symbol.localeCompare(b.symbol));
 
@@ -2144,12 +2144,20 @@ async function renderPriceTimeline() {
     : '';
 
   const rowsHtml = rows.map(r => {
+    // 🐛 แก้บั๊ก (2026-09-19): ตอน n=0 (ยังไม่มี snapshot อายุครบ 14 วันเลย) b14=0 เป๊ะ ทำให้
+    // predReturn14 = b14×s14 = 0 เสมอไม่ว่า s14 จะเป็นบวกหรือลบ — fallback เดิมเช็ค predReturn>=0
+    // จึงโชว์ "↑ ทิศขึ้น" ผิดๆ ให้ทุกตัว (เจอจาก SNDK: badge ✅ตรงกันลง แต่ +14D คาดโชว์ ↑ ขัดกันเอง)
+    // แก้ให้ fallback ใช้เครื่องหมายดิบของ s7/s14 เอง (ตัวเดียวกับที่ badge quadrant ใช้อยู่แล้ว)
+    // แทน predReturn ซึ่งพังเมื่อ b=0 — ถ้า s7/s14 เป็น null ค่อยโชว์ "—" จริงๆ
+    const dir7Html  = slopes.d7.n  === 0 ? '—' : (r.s7  != null ? (r.s7  >= 0 ? '↑ ทิศขึ้น' : '↓ ทิศลง') : '—');
+    const dir14Html = slopes.d14.n === 0 ? '—' : (r.s14 != null ? (r.s14 >= 0 ? '↑ ทิศขึ้น' : '↓ ทิศลง') : '—');
+
     const pred7Html = showPct7 && r.predPrice7 != null
       ? `~${fmtPrice(r.predPrice7)} <span style="color:var(--muted);">(${r.predReturn7>=0?'+':''}${r.predReturn7.toFixed(1)}%)</span>`
-      : `<span style="color:var(--muted);">${r.predReturn7!=null ? (r.predReturn7>=0?'↑ ทิศขึ้น':'↓ ทิศลง') : '—'}</span>`;
+      : `<span style="color:var(--muted);">${dir7Html}</span>`;
     const pred14Html = showPct14 && r.predPrice14 != null
       ? `~${fmtPrice(r.predPrice14)} <span style="color:var(--muted);">(${r.predReturn14>=0?'+':''}${r.predReturn14.toFixed(1)}%)</span>`
-      : `<span style="color:var(--muted);">${r.predReturn14!=null ? (r.predReturn14>=0?'↑ ทิศขึ้น':'↓ ทิศลง') : '—'}</span>`;
+      : `<span style="color:var(--muted);">${dir14Html}</span>`;
 
     return `
       <div style="padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
