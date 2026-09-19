@@ -645,11 +645,13 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
     <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
     <button class="ml-train-btn" id="quadrantAccuracyBtn" onclick="renderQuadrantAccuracy()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🧭 Accuracy แยกตามคู่สัญญาณ (4 กรณี)</button>
+    <button class="ml-train-btn" id="priceTimelineBtn" onclick="renderPriceTimeline()" style="border-color:rgba(56,189,248,.5);color:#38bdf8;font-size:11px;">📈 Price Timeline 14D/7D/ตอนนี้ + คาดการณ์</button>
     <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
     <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
     <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
     <div id="quadrantAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
+    <div id="priceTimelinePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.25);border-radius:8px;"></div>
   </div>
 </main>
 </div>
@@ -2027,6 +2029,162 @@ async function checkQuadrantAccuracy() {
     };
   });
   return out;
+}
+
+// ============================================================
+// 🆕 Price Timeline + คาดการณ์ (regression) — 2026-09-19
+// ที่มา: ผู้ใช้อยากเห็นราคาจริง 14D ก่อน/7D ก่อน/ตอนนี้ คู่กับ badge quadrant เพื่อเช็คว่า
+// ราคาจริงสนับสนุนสิ่งที่โมเดลบอกไหม (เจอเคส AVGO ที่ราคาฟื้นจริงตรงกับ 14D+ vs CRWV ที่ยังไม่ฟื้น
+// ทั้งที่เป็น -/+ เหมือนกัน) — ต่อยอดด้วยการแปลงคะแนน s7/s14 (composite, ไม่ใช่ % ตรงๆ) เป็นราคา
+// คาดการณ์ +7D/+14D ผ่าน regression ผ่านจุดกำเนิด (b = Σxy/Σx² บังคับ intercept=0 เพราะคะแนน=0
+// ควรแปลว่า return คาดหวัง=0 ด้วย — ลด overfit ตอน sample ยังน้อย)
+// ⚠️ นี่คือการทำนาย "ขนาด" ซึ่งยังไม่เคยพิสูจน์ความแม่นยำ (มีแค่ "ทิศทาง" ที่พิสูจน์แล้ว 66%
+// จาก checkSnapshotAccuracy) — ต้องโชว์ R² กำกับเสมอ และ gate ด้วย n≥20 ก่อนโชว์ตัวเลข %
+// ============================================================
+async function computeRegressionSlopes() {
+  const history = await loadSnapshotHistory();
+  const today = new Date();
+  const pairs7 = [], pairs14 = [];
+
+  history.forEach(s => {
+    const [y,m,d] = s.date.split('-').map(Number);
+    const snapDate = new Date(y, m-1, d);
+    const daysSince = Math.floor((today - snapDate) / 86400000);
+
+    s.rows.forEach(r => {
+      if(daysSince >= 7 && r.s7 != null) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 7);
+        if(base != null && fut != null && base > 0) {
+          pairs7.push({ x: r.s7, y: (fut - base) / base * 100 });
+        }
+      }
+      if(daysSince >= 14 && r.s14 != null) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 14);
+        if(base != null && fut != null && base > 0) {
+          pairs14.push({ x: r.s14, y: (fut - base) / base * 100 });
+        }
+      }
+    });
+  });
+
+  function regressThroughOrigin(pairs) {
+    const n = pairs.length;
+    if(n === 0) return { b: 0, r2: 0, n: 0 };
+    const sumXY = pairs.reduce((s,p) => s + p.x*p.y, 0);
+    const sumX2 = pairs.reduce((s,p) => s + p.x*p.x, 0);
+    const b = sumX2 !== 0 ? sumXY / sumX2 : 0;
+    const meanY = pairs.reduce((s,p) => s + p.y, 0) / n;
+    const ssTot = pairs.reduce((s,p) => s + (p.y - meanY)**2, 0);
+    const ssRes = pairs.reduce((s,p) => s + (p.y - b*p.x)**2, 0);
+    const r2 = ssTot !== 0 ? 1 - ssRes/ssTot : 0;
+    return { b, r2, n };
+  }
+
+  return { d7: regressThroughOrigin(pairs7), d14: regressThroughOrigin(pairs14) };
+}
+
+const REGRESSION_MIN_N = 20; // ต้องมี sample อย่างน้อยเท่านี้ถึงจะโชว์ตัวเลข % คาดการณ์ (มากกว่า n≥5 ของ quadrant accuracy เพราะ regression ไวต่อ noise กว่าการนับถูก/ผิดธรรมดา)
+
+async function renderPriceTimeline() {
+  if(!mlForwardModels[7] || !mlForwardModels[14]) {
+    alert('ต้องกด "Train Forward 7D/14D" ให้เสร็จก่อนครับ (ยังไม่มีโมเดลให้ใช้คำนวณ)');
+    return;
+  }
+  const panel = document.getElementById('priceTimelinePanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ regression จาก snapshot history...</div>`;
+
+  const slopes = await computeRegressionSlopes();
+  const todayStr = new Date().toISOString().slice(0,10);
+  const latest = getLatest();
+  const NO_SIGNAL = 0.05;
+
+  const rows = latest.map(r => {
+    const s7  = calcForwardScore(r, 7);
+    const s14 = calcForwardScore(r, 14);
+    let quadrant = 'unknown';
+    if(s7 != null && s14 != null) {
+      if(Math.abs(s7) < NO_SIGNAL && Math.abs(s14) < NO_SIGNAL) quadrant = 'weak';
+      else if(s7 >= 0 && s14 >= 0) quadrant = 'both_up';
+      else if(s7 < 0 && s14 < 0) quadrant = 'both_down';
+      else if(s7 >= 0 && s14 < 0) quadrant = 'up_down';
+      else quadrant = 'down_up';
+    }
+
+    const price14ago = findPriceNearDate(r.symbol, todayStr, -14);
+    const price7ago  = findPriceNearDate(r.symbol, todayStr, -7);
+    const priceNow    = r.price;
+
+    const predReturn7  = s7  != null ? slopes.d7.b  * s7  : null;
+    const predReturn14 = s14 != null ? slopes.d14.b * s14 : null;
+    const predPrice7   = predReturn7  != null && priceNow > 0 ? priceNow * (1 + predReturn7/100)  : null;
+    const predPrice14  = predReturn14 != null && priceNow > 0 ? priceNow * (1 + predReturn14/100) : null;
+
+    return { symbol: r.symbol, quadrant, price14ago, price7ago, priceNow, predReturn7, predReturn14, predPrice7, predPrice14 };
+  }).filter(r => r.price14ago != null || r.price7ago != null) // ตัดตัวที่ไม่มีข้อมูลราคาย้อนหลังเลยออก กันแถวว่างเปล่า
+    .sort((a,b) => a.symbol.localeCompare(b.symbol));
+
+  const quadrantBadgeMap = {
+    both_up:   '✅ 🐂🐂 ตรงกันขึ้น',
+    both_down: '✅ 🐻🐻 ตรงกันลง',
+    up_down:   '❌ 🐂🐻 +/-',
+    down_up:   '❌ 🐻🐂 -/+',
+    weak:      '⚪ ไม่มีสัญญาณ',
+    unknown:   '— ไม่มีข้อมูล',
+  };
+
+  const showPct7  = slopes.d7.n  >= REGRESSION_MIN_N;
+  const showPct14 = slopes.d14.n >= REGRESSION_MIN_N;
+  const fmtPrice = p => p != null ? `$${p.toFixed(2)}` : '—';
+  const fmtPct = (base, cur) => (base != null && cur != null && base > 0)
+    ? `<span style="color:${cur>=base?'var(--acc)':'var(--danger)'};">${cur>=base?'+':''}${((cur-base)/base*100).toFixed(1)}%</span>`
+    : '';
+
+  const rowsHtml = rows.map(r => {
+    const pred7Html = showPct7 && r.predPrice7 != null
+      ? `~${fmtPrice(r.predPrice7)} <span style="color:var(--muted);">(${r.predReturn7>=0?'+':''}${r.predReturn7.toFixed(1)}%)</span>`
+      : `<span style="color:var(--muted);">${r.predReturn7!=null ? (r.predReturn7>=0?'↑ ทิศขึ้น':'↓ ทิศลง') : '—'}</span>`;
+    const pred14Html = showPct14 && r.predPrice14 != null
+      ? `~${fmtPrice(r.predPrice14)} <span style="color:var(--muted);">(${r.predReturn14>=0?'+':''}${r.predReturn14.toFixed(1)}%)</span>`
+      : `<span style="color:var(--muted);">${r.predReturn14!=null ? (r.predReturn14>=0?'↑ ทิศขึ้น':'↓ ทิศลง') : '—'}</span>`;
+
+    return `
+      <div style="padding:10px 4px;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-weight:700;">${r.symbol}</span>
+          <span style="font-size:11px;">${quadrantBadgeMap[r.quadrant]}</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:11px;flex-wrap:wrap;">
+          <span style="color:var(--muted);">14D ก่อน ${fmtPrice(r.price14ago)}</span>
+          <span>→</span>
+          <span style="color:var(--muted);">7D ก่อน ${fmtPrice(r.price7ago)}</span>
+          <span>→</span>
+          <span style="font-weight:700;">ตอนนี้ ${fmtPrice(r.priceNow)}</span>
+        </div>
+        <div style="display:flex;gap:14px;align-items:center;font-size:11px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,.1);">
+          <span style="color:var(--muted);">┄→ +7D คาด: ${pred7Html}</span>
+          <span style="color:var(--muted);">┄→ +14D คาด: ${pred14Html}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#38bdf8;margin-bottom:10px;">
+      📈 PRICE TIMELINE + คาดการณ์ · ราคาจริง 14D ก่อน/7D ก่อน/ตอนนี้ + ประมาณการ +7D/+14D จาก regression
+    </div>
+    <div style="margin-bottom:10px;padding:8px;background:rgba(250,204,21,.08);border-radius:6px;font-size:10px;color:#facc15;">
+      ⚠️ คอลัมน์ "คาด" เป็นการแปลงคะแนนโมเดล (s7/s14) เป็น % โดยประมาณผ่าน regression (b7=${slopes.d7.b.toFixed(2)}, R²=${slopes.d7.r2.toFixed(2)}, n=${slopes.d7.n} · b14=${slopes.d14.b.toFixed(2)}, R²=${slopes.d14.r2.toFixed(2)}, n=${slopes.d14.n})
+      ${(!showPct7 || !showPct14) ? `— n ยังไม่ถึง ${REGRESSION_MIN_N} ในบาง horizon เลยโชว์แค่ทิศทางแทนตัวเลข %` : ''}
+      ยังไม่เคยพิสูจน์ความแม่นยำของ "ขนาด" (มีแค่ทิศทางที่พิสูจน์แล้ว 66%) — ใช้ดูประกอบเท่านั้น
+    </div>
+    <div style="max-height:480px;overflow-y:auto;font-family:var(--mono);">
+      ${rowsHtml || '<div style="color:var(--muted);font-size:11px;">ไม่มีตัวไหนมีข้อมูลราคาย้อนหลังพอ</div>'}
+    </div>
+  `;
 }
 
 async function renderQuadrantAccuracy() {
