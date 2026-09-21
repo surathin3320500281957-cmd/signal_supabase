@@ -641,6 +641,8 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <div class="ml-header-row">
     <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
     <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
+    <button class="ml-train-btn" id="trainFwd1DBtn" onclick="runForward1DTraining()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🧪 Train Forward 1D (ทดลอง)</button>
+    <div id="forward1DPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
     <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
     <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
     <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
@@ -704,6 +706,9 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     </div>
     <button class="ml-train-btn" id="conDivBtn" onclick="renderConDivLog()" style="margin-top:12px;border-color:rgba(192,132,252,.5);color:#c084fc;font-size:11px;">🗳️ บันทึก + ดู Convergence/Divergence รายวัน</button>
     <div id="conDivPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.25);border-radius:8px;"></div>
+
+    <button class="ml-train-btn" id="tomorrowBtn" onclick="renderTomorrowPrediction()" style="margin-top:12px;border-color:rgba(251,146,60,.5);color:#fb923c;font-size:11px;">🔮 +1D คาดการณ์ + Convergence/Divergence</button>
+    <div id="tomorrowPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,146,60,.06);border:1px solid rgba(251,146,60,.25);border-radius:8px;"></div>
   </div>
 </main>
 </div>
@@ -1004,6 +1009,40 @@ function runForwardModelTraining() {
   `;
 }
 
+// 🆕 runForward1DTraining — เทรนโมเดล +1D แยกต่างหาก ใช้ trainForwardModel(days) ตัวเดียวกับ 7D/14D
+// เก็บผลไว้ที่ mlForwardModels[1] — ฟังก์ชัน calcForwardScore(r,1) จะเริ่มใช้ได้ทันทีหลังเทรนสำเร็จ
+// (คาดว่าสะสม sample ได้เร็วกว่า 7D/14D มาก เพราะรอผลจริงแค่ 1 วันก็ตรวจสอบได้)
+function runForward1DTraining() {
+  const r1 = trainForwardModel(1);
+  const panel = document.getElementById('forward1DPanel');
+  if(!panel) return;
+
+  const renderOne = (r) => {
+    if(!r) return `<div style="color:var(--danger);">sample ไม่พอ (ต้อง ≥50)</div>`;
+    const rows = Object.entries(r.corrs).map(([k,v]) => {
+      const w = r.weights[k];
+      const clr = v >= 0 ? 'var(--acc)' : 'var(--danger)';
+      return `<div style="display:flex;justify-content:space-between;padding:2px 0;">
+        <span>${k}</span>
+        <span style="color:${clr};">r=${v.toFixed(4)} · w=${(w*100).toFixed(1)}%</span>
+      </div>`;
+    }).join('');
+    return `<div style="font-size:9px;color:var(--muted);margin-bottom:6px;">
+      samples: ${r.samples} · เฉลี่ยคลาดเคลื่อน: ${r.avgGap} วัน
+    </div>${rows}`;
+  };
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#4ade80;margin-bottom:10px;">
+      🧪 FORWARD MODEL 1D (ทดลอง — ยังไม่เชื่อมเข้าการตัดสินใจจริง)
+    </div>
+    <div style="font-family:var(--mono);font-size:11px;">
+      <div style="color:var(--text);font-weight:700;margin-bottom:4px;">1D Model</div>${renderOne(r1)}
+    </div>
+  `;
+}
+
 // ============================================================
 // 🆕 Forward Convergence — v2 ของแผน "การบ้าน ML" — ทิศทางตรงกันไหมระหว่าง 7D กับ 14D model
 // v1 = แค่ "ทิศทาง" (บวก/ลบ) ไม่สนขนาด — ตามที่ตกลงกันไว้ (เหตุผล: ยังไม่มั่นใจขนาดตัวเลขพอจะเทียบกัน)
@@ -1073,6 +1112,7 @@ function renderForwardConvergence() {
   const rows = latest.map(r => {
     const s7  = calcForwardScore(r, 7);
     const s14 = calcForwardScore(r, 14);
+    const s1  = calcForwardScore(r, 1); // 🆕 เก็บไว้เผื่อเทรน Forward 1D แล้ว — ถ้ายังไม่เทรนจะเป็น null เฉยๆ ไม่พัง
     let status;
     if(s7 == null || s14 == null) status = 'unknown';
     else if(Math.abs(s7) < NO_SIGNAL && Math.abs(s14) < NO_SIGNAL) status = 'weak';
@@ -1089,7 +1129,7 @@ function renderForwardConvergence() {
     else if(s7 >= 0 && s14 < 0) quadrant = 'up_down';
     else quadrant = 'down_up';
 
-    return { symbol: r.symbol, s7, s14, status, quadrant };
+    return { symbol: r.symbol, s1, s7, s14, status, quadrant };
   }).sort((a,b) => a.symbol.localeCompare(b.symbol));
 
   const agreeCount    = rows.filter(r => r.status === 'agree').length;
@@ -2060,7 +2100,7 @@ async function checkQuadrantAccuracy() {
 async function computeRegressionSlopes() {
   const history = await loadSnapshotHistory();
   const today = new Date();
-  const pairs7 = [], pairs14 = [];
+  const pairs1 = [], pairs7 = [], pairs14 = [];
 
   history.forEach(s => {
     const [y,m,d] = s.date.split('-').map(Number);
@@ -2068,6 +2108,15 @@ async function computeRegressionSlopes() {
     const daysSince = Math.floor((today - snapDate) / 86400000);
 
     s.rows.forEach(r => {
+      // 🆕 +1D — ใช้ r.s1 ที่เพิ่งเริ่มเก็บ (snapshot เก่าก่อนหน้านี้จะไม่มี field นี้ ข้ามไปเงียบๆ
+      // ไม่ error — n จะค่อยๆ โตขึ้นเองทุกวันที่กดปุ่ม Train Forward หลังจากนี้)
+      if(daysSince >= 1 && r.s1 != null) {
+        const base = findPriceNearDate(r.symbol, s.date, 0);
+        const fut  = findPriceNearDate(r.symbol, s.date, 1);
+        if(base != null && fut != null && base > 0) {
+          pairs1.push({ x: r.s1, y: (fut - base) / base * 100 });
+        }
+      }
       if(daysSince >= 7 && r.s7 != null) {
         const base = findPriceNearDate(r.symbol, s.date, 0);
         const fut  = findPriceNearDate(r.symbol, s.date, 7);
@@ -2098,7 +2147,7 @@ async function computeRegressionSlopes() {
     return { b, r2, n };
   }
 
-  return { d7: regressThroughOrigin(pairs7), d14: regressThroughOrigin(pairs14) };
+  return { d1: regressThroughOrigin(pairs1), d7: regressThroughOrigin(pairs7), d14: regressThroughOrigin(pairs14) };
 }
 
 const REGRESSION_MIN_N = 20; // ต้องมี sample อย่างน้อยเท่านี้ถึงจะโชว์ตัวเลข % คาดการณ์ (มากกว่า n≥5 ของ quadrant accuracy เพราะ regression ไวต่อ noise กว่าการนับถูก/ผิดธรรมดา)
@@ -2207,6 +2256,91 @@ async function renderPriceTimeline() {
     </div>
     <div style="max-height:480px;overflow-y:auto;font-family:var(--mono);">
       ${rowsHtml || '<div style="color:var(--muted);font-size:11px;">ไม่มีตัวไหนมีข้อมูลราคาย้อนหลังพอ</div>'}
+    </div>
+  `;
+}
+
+// ============================================================
+// 🆕 renderTomorrowPrediction — รวม +1D คาดการณ์ราคา (regression จาก trainForwardModel(1))
+// เข้ากับภาวะ Convergence/Divergence รายตัว (classifyConDiv) — ตามที่คุยกันไว้ว่าอยากเห็น
+// "โมเดลบอกอะไร" คู่กับ "แรงขับ RSI ยืนยันหรือขัดกัน" ในตารางเดียว ไม่ต้องเปิดดูทีละที่
+// ตัวอย่างการตีความ: Bullish Convergence + คาดขึ้น = เชื่อได้เต็มที่ / Bearish Divergence + คาดขึ้น
+// = ระวัง (โมเดลบอกขึ้นแต่ RSI เริ่มอ่อนแรง อาจเป็นรอบสุดท้ายก่อนพลิก)
+// ============================================================
+async function renderTomorrowPrediction() {
+  if(!mlForwardModels[1]) {
+    alert('ต้องกด "Train Forward 1D" ให้เสร็จก่อนครับ (ยังไม่มีโมเดลให้ใช้คำนวณ)');
+    return;
+  }
+  const panel = document.getElementById('tomorrowPanel');
+  if(!panel) return;
+  panel.style.display = 'block';
+  panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ...</div>`;
+
+  const slopes = await computeRegressionSlopes();
+  const latest = getLatest();
+  const showPct1 = slopes.d1.n >= REGRESSION_MIN_N;
+
+  const stateBadge = {
+    bullish_convergence: '🐂✅ Bullish Convergence',
+    bearish_divergence:  '🐂⚠️ Bearish Divergence',
+    bearish_convergence: '🐻✅ Bearish Convergence',
+    bullish_divergence:  '🐻⚠️ Bullish Divergence',
+    neutral:              '⚪ Neutral',
+  };
+  const stateColor = {
+    bullish_convergence: 'var(--acc)',
+    bearish_divergence:  'var(--warn)',
+    bearish_convergence: 'var(--danger)',
+    bullish_divergence:  '#60a5fa',
+    neutral:               'var(--muted)',
+  };
+
+  const rows = latest.map(r => {
+    const s1 = calcForwardScore(r, 1);
+    const predReturn1 = s1 != null ? slopes.d1.b * s1 : null;
+    const predPrice1  = predReturn1 != null && r.price > 0 ? r.price * (1 + predReturn1/100) : null;
+    const cd = classifyConDiv(r.symbol);
+    return { symbol: r.symbol, price: r.price, s1, predReturn1, predPrice1, cd };
+  }).filter(r => r.s1 != null && r.cd && r.cd.state !== 'unknown' && r.cd.state !== 'not_enough_data')
+    .sort((a,b) => a.symbol.localeCompare(b.symbol));
+
+  const fmtPrice = p => p != null ? `$${p.toFixed(2)}` : '—';
+
+  const rowsHtml = rows.map(r => {
+    const predHtml = showPct1 && r.predPrice1 != null
+      ? `~${fmtPrice(r.predPrice1)} <span style="color:var(--muted);">(${r.predReturn1>=0?'+':''}${r.predReturn1.toFixed(1)}%)</span>`
+      : `<span style="color:var(--muted);">${r.predReturn1!=null ? (r.predReturn1>=0?'↑ ทิศขึ้น':'↓ ทิศลง') : '—'}</span>`;
+
+    // ธงเตือนเมื่อโมเดล +1D กับ ConDiv ขัดกัน (โมเดลบอกทิศทางหนึ่ง แต่ RSI ส่งสัญญาณตรงข้าม)
+    const modelUp = r.predReturn1 != null && r.predReturn1 >= 0;
+    const conflict = (modelUp && r.cd.state === 'bearish_divergence') ||
+                      (!modelUp && r.cd.state === 'bullish_divergence');
+
+    return `
+      <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);${conflict?'background:rgba(250,204,21,.06);':''}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);">
+          <span style="font-size:16px;font-weight:700;min-width:56px;">${r.symbol}</span>
+          <span style="font-size:14px;">${fmtPrice(r.price)} → ${predHtml}</span>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:${stateColor[r.cd.state]};margin-top:3px;font-family:var(--mono);">
+          ${stateBadge[r.cd.state]} ${conflict ? '⚠️ ขัดกับโมเดล' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#fb923c;margin-bottom:10px;">
+      🔮 +1D คาดการณ์ + CONVERGENCE/DIVERGENCE · รวมโมเดล +1D เข้ากับแรงขับ RSI รายตัว
+    </div>
+    <div style="margin-bottom:10px;padding:8px;background:rgba(250,204,21,.08);border-radius:6px;font-size:10px;color:#facc15;">
+      ⚠️ b1=${slopes.d1.b.toFixed(2)}, R²=${slopes.d1.r2.toFixed(2)}, n=${slopes.d1.n}
+      ${!showPct1 ? `— n ยังไม่ถึง ${REGRESSION_MIN_N} เลยโชว์แค่ทิศทางแทนตัวเลข % (ปกติมาก เพิ่งเริ่มเก็บ s1 วันนี้ รอสะสมอีกไม่กี่วัน)` : ''}
+      แถวที่ไฮไลต์เหลือง = โมเดล +1D กับ ConDiv ขัดกันเอง ควรระวังเป็นพิเศษ
+    </div>
+    <div style="max-height:480px;overflow-y:auto;">
+      ${rowsHtml || '<div style="color:var(--muted);font-size:11px;">ไม่มีตัวไหนมีข้อมูลพอทั้ง 2 ฝั่ง</div>'}
     </div>
   `;
 }
@@ -2572,25 +2706,29 @@ async function renderConDivLog() {
     .filter(r => r.state !== 'unknown' && r.state !== 'not_enough_data')
     .sort((a,b) => a.symbol.localeCompare(b.symbol))
     .map(r => `
-      <div style="display:flex;gap:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-family:var(--mono);font-size:11px;">
-        <span style="width:56px;font-weight:700;">${r.symbol}</span>
-        <span style="width:44px;">${r.marketDir==='up'?'🐂↑':'🐻↓'}</span>
-        <span style="width:30px;">${r.signalDir==='up'?'↑':r.signalDir==='down'?'↓':'→'}</span>
-        <span style="color:${stateColor[r.state]};min-width:190px;">${stateBadge[r.state]}</span>
-        <span style="color:var(--muted);margin-left:auto;">ΔRSI ${r.rsiDelta>=0?'+':''}${r.rsiDelta}</span>
+      <div style="padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);">
+          <span style="font-size:16px;font-weight:700;min-width:56px;">${r.symbol}</span>
+          <span style="font-size:15px;">${r.marketDir==='up'?'🐂↑':'🐻↓'}</span>
+          <span style="font-size:15px;">${r.signalDir==='up'?'↑':r.signalDir==='down'?'↓':'→'}</span>
+          <span style="font-size:14px;font-weight:700;color:${stateColor[r.state]};">${stateBadge[r.state]}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono);">ΔRSI ${r.rsiDelta>=0?'+':''}${r.rsiDelta}</div>
       </div>
     `).join('');
 
   const historyRowsHtml = history.map(s => `
-    <div style="display:flex;gap:10px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:11px;flex-wrap:wrap;">
-      <span style="width:90px;">${s.date}</span>
-      <span style="color:var(--acc);font-weight:700;">🐂${s.bullTotal ?? (s.bullish_convergence+s.bearish_divergence)}</span>
-      <span style="color:var(--acc);">├✅${s.bullish_convergence}</span>
-      <span style="color:var(--warn);">└⚠️${s.bearish_divergence}</span>
-      <span style="color:var(--danger);font-weight:700;">🐻${s.bearTotal ?? (s.bearish_convergence+s.bullish_divergence)}</span>
-      <span style="color:var(--danger);">├✅${s.bearish_convergence}</span>
-      <span style="color:#60a5fa;">└⚠️${s.bullish_divergence}</span>
-      <span style="color:var(--muted);">⚪${s.neutral}</span>
+    <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-family:var(--mono);">
+      <div style="font-size:14px;font-weight:700;margin-bottom:3px;">${s.date}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:13px;">
+        <span style="color:var(--acc);font-weight:700;">🐂${s.bullTotal ?? (s.bullish_convergence+s.bearish_divergence)}</span>
+        <span style="color:var(--acc);">├✅${s.bullish_convergence}</span>
+        <span style="color:var(--warn);">└⚠️${s.bearish_divergence}</span>
+        <span style="color:var(--danger);font-weight:700;">🐻${s.bearTotal ?? (s.bearish_convergence+s.bullish_divergence)}</span>
+        <span style="color:var(--danger);">├✅${s.bearish_convergence}</span>
+        <span style="color:#60a5fa;">└⚠️${s.bullish_divergence}</span>
+        <span style="color:var(--muted);">⚪${s.neutral}</span>
+      </div>
     </div>
   `).join('');
 
@@ -2603,12 +2741,12 @@ async function renderConDivLog() {
       (ต้องต่าง ≥2 จุดถึงนับว่ามีนัยสำคัญ ไม่งั้นเป็น Neutral) · Convergence = ไปทางเดียวกัน (ยืนยัน) · Divergence = สวนทาง (เตือนใกล้จบรอบ)
     </div>
 
-    <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;">วันนี้ (${snap.date}) — รวม ${snap.total} ตัว</div>
-    <div style="display:flex;gap:20px;margin-bottom:8px;font-family:var(--mono);font-size:13px;font-weight:700;">
+    <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px;">วันนี้ (${snap.date}) — รวม ${snap.total} ตัว</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px;font-family:var(--mono);font-size:15px;font-weight:700;">
       <span style="color:var(--acc);">🐂 กระทิงรวม ${snap.bullTotal}</span>
       <span style="color:var(--danger);">🐻 หมีรวม ${snap.bearTotal}</span>
     </div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-family:var(--mono);font-size:12px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;font-family:var(--mono);font-size:13px;">
       <span style="color:var(--acc);">🐂✅ Bullish Convergence <b>${snap.bullish_convergence}</b></span>
       <span style="color:var(--warn);">🐂⚠️ Bearish Divergence <b>${snap.bearish_divergence}</b></span>
       <span style="color:var(--danger);">🐻✅ Bearish Convergence <b>${snap.bearish_convergence}</b></span>
