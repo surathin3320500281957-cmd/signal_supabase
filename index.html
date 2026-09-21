@@ -638,22 +638,47 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     </div>
   </div>
 
-  <div class="ml-header-row">
-    <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
-    <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
-    <button class="ml-train-btn" id="trainFwd1DBtn" onclick="runForward1DTraining()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🧪 Train Forward 1D (ทดลอง)</button>
-    <div id="forward1DPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
-    <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
-    <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
-    <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
-    <button class="ml-train-btn" id="quadrantAccuracyBtn" onclick="renderQuadrantAccuracy()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🧭 Accuracy แยกตามคู่สัญญาณ (4 กรณี)</button>
-    <button class="ml-train-btn" id="priceTimelineBtn" onclick="renderPriceTimeline()" style="border-color:rgba(56,189,248,.5);color:#38bdf8;font-size:11px;">📈 Price Timeline 14D/7D/ตอนนี้ + คาดการณ์</button>
-    <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
-    <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
-    <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
-    <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
-    <div id="quadrantAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
-    <div id="priceTimelinePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.25);border-radius:8px;"></div>
+  <div class="ml-header-row" style="flex-direction:column;align-items:stretch;gap:12px;">
+
+    <div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">1️⃣ ตรวจสอบข้อมูลก่อนเทรน</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="ml-train-btn" id="previewFwdBtn" onclick="previewForwardTrainingSetByDays()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">🧪 Preview Forward 7D/14D (ทดสอบ ไม่เทรนจริง)</button>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">2️⃣ เทรนโมเดล (กดก่อนเสมอ ก่อนไปสเต็ป 3-4)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="ml-train-btn" id="trainFwdBtn" onclick="runForwardModelTraining()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">🧪 Train Forward 7D/14D (ทดลอง — ยังไม่ใช้จริง)</button>
+        <button class="ml-train-btn" id="trainFwd1DBtn" onclick="runForward1DTraining()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🧪 Train Forward 1D (ทดลอง)</button>
+      </div>
+      <div id="forward1DPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">3️⃣ ดูผล / เทียบสัญญาณ + บันทึก snapshot อัตโนมัติ</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="ml-train-btn" id="convergeFwdBtn" onclick="renderForwardConvergence()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🆕 Forward Convergence 7D vs 14D (ทดลอง)</button>
+        <button class="ml-train-btn" id="priceTimelineBtn" onclick="renderPriceTimeline()" style="border-color:rgba(56,189,248,.5);color:#38bdf8;font-size:11px;">📈 Price Timeline 14D/7D/ตอนนี้ + คาดการณ์</button>
+      </div>
+      <div id="forwardConvergencePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(74,222,128,.06);border:1px solid rgba(74,222,128,.25);border-radius:8px;"></div>
+      <div id="priceTimelinePanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.25);border-radius:8px;"></div>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">4️⃣ ตรวจสอบความน่าเชื่อถือ (ต้องมี snapshot สะสมพอ จากสเต็ป 3 ก่อน)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="ml-train-btn" id="snapshotTrendBtn" onclick="renderSnapshotTrend()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">📈 Snapshot Trend (ชั้น 3)</button>
+        <button class="ml-train-btn" id="snapshotAccuracyBtn" onclick="renderSnapshotAccuracy()" style="border-color:rgba(244,114,182,.5);color:#f472b6;font-size:11px;">🎯 Check Accuracy (ชั้น 4)</button>
+        <button class="ml-train-btn" id="quadrantAccuracyBtn" onclick="renderQuadrantAccuracy()" style="border-color:rgba(251,191,36,.5);color:#fbbf24;font-size:11px;">🧭 Accuracy แยกตามคู่สัญญาณ (4 กรณี)</button>
+      </div>
+      <div id="forwardModelPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+      <div id="snapshotTrendPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(96,165,250,.06);border:1px solid rgba(96,165,250,.25);border-radius:8px;"></div>
+      <div id="snapshotAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(244,114,182,.06);border:1px solid rgba(244,114,182,.25);border-radius:8px;"></div>
+      <div id="quadrantAccuracyPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.25);border-radius:8px;"></div>
+    </div>
+
   </div>
 </main>
 </div>
