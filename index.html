@@ -1315,7 +1315,13 @@ async function loadFromSheet() {
     const [resSignals, resPort, resSum] = await Promise.all([
       // stock_signals 30 วันล่าสุด join symbols
       fetch(
-        `${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.asc&limit=5000`,
+        // 🐛 แก้บั๊ก (2026-09-21): เดิม order=run_seq.asc (เก่า→ใหม่) — บั๊กเดียวกับที่เจอในไฟล์
+        // frontend เมื่อ 2026-09-19 (limit ตัดข้อมูลใหม่ทิ้งเพราะเรียงผิดทาง) แค่ไม่เคยเช็คฝั่ง
+        // backend มาก่อน ข้อมูลสะสมเกิน limit=5000 ได้ง่ายจากการทดสอบ Save ซ้ำหลายรอบ (constraint
+        // มี created_at ทำให้แต่ละ Save สร้างแถวใหม่ไม่จำกัด) พอเรียง asc แล้วโดนตัด จะตัดแถวใหม่สุด
+        // ทิ้ง ทำให้ allRows/classifyConDiv เห็นข้อมูลเก่ากว่าความจริง (bull/bear count เพี้ยนหนัก
+        // เทียบกับ frontend ที่เห็นข้อมูลสดถูกต้อง — เจอจาก Dashboard 34/4 vs ConDiv 14/16)
+        `${SUPABASE_URL}/rest/v1/stock_signals?select=signal_date,session,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,run_seq,symbols(symbol,group_id,groups(name,emoji))&signal_date=gte.${cutoffStr}&order=run_seq.desc&limit=5000`,
         { headers: { ...sb._hdr(), 'Range-Unit': 'items', 'Range': '0-4999' } }
       ),
       // portfolio ที่ active
@@ -2499,11 +2505,18 @@ async function saveConDivSnapshot(snap) {
         trained_at:   new Date().toISOString(),
       }]),
     });
-    if(!res.ok) { const e = await res.json().catch(()=>({})); console.error('[saveConDivSnapshot] insert failed', e); return false; }
-    return true;
+    // 🐛 แก้ (2026-09-21): เดิมคืนแค่ true/false ไม่บอกสาเหตุ ทำให้ผู้ใช้เห็นแค่ "บันทึกไม่สำเร็จ"
+    // เฉยๆ ไม่รู้ว่าติดตรงไหน (RLS, constraint ผิด, network ฯลฯ) — เปลี่ยนให้คืน error message จริงด้วย
+    if(!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      const msg = e.message || e.hint || JSON.stringify(e) || `HTTP ${res.status}`;
+      console.error('[saveConDivSnapshot] insert failed', e);
+      return { ok: false, error: msg };
+    }
+    return { ok: true, error: null };
   } catch(err) {
     console.error('[saveConDivSnapshot] error', err);
-    return false;
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -2578,7 +2591,7 @@ async function renderConDivLog() {
 
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#c084fc;margin-bottom:10px;">
-      🗳️ CONVERGENCE / DIVERGENCE — 4 ภาวะ (${saved?'💾 บันทึกแล้ว':'⚠️ บันทึกไม่สำเร็จ'}) · ${history.length} วันที่มีข้อมูลสะสม
+      🗳️ CONVERGENCE / DIVERGENCE — 4 ภาวะ (${saved.ok?'💾 บันทึกแล้ว':`⚠️ บันทึกไม่สำเร็จ: ${saved.error}`}) · ${history.length} วันที่มีข้อมูลสะสม
     </div>
     <div style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
       "ตลาด" = trend รายตัว (EMA20 vs EMA50) · "สัญญาณ" = ทิศทาง RSI เฉลี่ยครึ่งหลัง vs ครึ่งแรกของ 20 วันล่าสุด
