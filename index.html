@@ -2430,8 +2430,13 @@ function classifyConDiv(symbol, lookbackDays = 20) {
   if(rows.length === 0) return null;
 
   const latestRow = rows[rows.length - 1];
-  if(!(latestRow.ema20 > 0 && latestRow.ema50 > 0)) return { symbol, state: 'unknown' };
-  const marketDir = latestRow.ema20 > latestRow.ema50 ? 'up' : 'down';
+  if(!(latestRow.price > 0 && latestRow.ema50 > 0)) return { symbol, state: 'unknown' };
+  // 🐛 แก้ (2026-09-21): เดิมใช้ EMA20 vs EMA50 — คนละนิยามกับ Dashboard/Gate ที่ใช้ "ราคา vs EMA50"
+  // (บรรทัด bullCount/bearCount ใน index_front.html ที่ป้อนเข้า saveMarketRegime โดยตรง) ทำให้ตัวเลข
+  // กระทิง/หมีของ ConDiv (14/14) ไม่ตรงกับ Dashboard (34/4) เลย ทั้งที่ควรสะท้อนตลาดเดียวกัน
+  // Gate ใช้นิยามนี้มาตลอดและทายถูกซ้ำๆ (มีหลักฐานจริงในบทสนทนา) จึงเปลี่ยนมาใช้นิยามเดียวกันนี้แทน
+  // EMA20 vs EMA50 ที่ยังไม่เคยพิสูจน์อะไรเลย — ตอนนี้ ConDiv จะสอดคล้องกับ Gate/Dashboard ทั้งระบบ
+  const marketDir = latestRow.price > latestRow.ema50 ? 'up' : 'down';
 
   const byDate = {};
   rows.forEach(r => { byDate[dtKey(r).slice(0,10)] = r; });
@@ -2594,7 +2599,7 @@ async function renderConDivLog() {
       🗳️ CONVERGENCE / DIVERGENCE — 4 ภาวะ (${saved.ok?'💾 บันทึกแล้ว':`⚠️ บันทึกไม่สำเร็จ: ${saved.error}`}) · ${history.length} วันที่มีข้อมูลสะสม
     </div>
     <div style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
-      "ตลาด" = trend รายตัว (EMA20 vs EMA50) · "สัญญาณ" = ทิศทาง RSI เฉลี่ยครึ่งหลัง vs ครึ่งแรกของ 20 วันล่าสุด
+      "ตลาด" = ราคา vs EMA50 รายตัว (นิยามเดียวกับ Gate/Dashboard) · "สัญญาณ" = ทิศทาง RSI เฉลี่ยครึ่งหลัง vs ครึ่งแรกของ 20 วันล่าสุด
       (ต้องต่าง ≥2 จุดถึงนับว่ามีนัยสำคัญ ไม่งั้นเป็น Neutral) · Convergence = ไปทางเดียวกัน (ยืนยัน) · Divergence = สวนทาง (เตือนใกล้จบรอบ)
     </div>
 
