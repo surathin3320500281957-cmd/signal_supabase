@@ -397,6 +397,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
   <button class="tab-btn" onclick="switchTab('forward')">📊 Forward Model</button>
   <button class="tab-btn" onclick="switchTab('recovery')">🔮 Recovery Forecast</button>
+  <button class="tab-btn" onclick="switchTab('config')">⚙️ Config Control</button>
 </div>
 
 <!-- TAB 1: SIGNAL MATRIX -->
@@ -738,6 +739,30 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
 </main>
 </div>
 
+<!-- 🆕 TAB 6: CONFIG CONTROL — แผงควบคุม threshold ที่ควรต่างกันตามภาวะตลาด (หมี/กระทิง/ออกข้าง) -->
+<div id="tab-config" class="tab-content">
+<main>
+  <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:var(--muted);margin-bottom:6px;">
+    ⚙️ CONFIG CONTROL — ตั้งค่า threshold ตามภาวะตลาด
+  </div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.6;">
+    รวม threshold ที่กระจายอยู่คนละจุดในระบบ (Turning Point Gate, Breadth Saturation, ConDiv, TP Confidence) มาไว้ที่เดียว
+    เพื่อปรับตามภาวะตลาดได้ — คอลัมน์ <b>Default</b> คือค่าที่ระบบใช้อยู่จริงตอนนี้ (อ่านอย่างเดียว แก้ไม่ได้ เป็นค่าอ้างอิง)
+    คอลัมน์ Bull/Bear/Sideways แก้ได้อิสระ<br>
+    ⚠️ <b>เฟสนี้ยังเป็นแค่การบันทึกค่าไว้ดูก่อน — ยังไม่เชื่อมเข้าไปเปลี่ยนพฤติกรรมจริงของ Gate/ConDiv/TP
+    (เฟสถัดไปจะเอาไปผูกเข้าโค้ดจริงทีละจุด)</b>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+    <button class="ml-train-btn" onclick="applyRecommendedThresholds()" style="border-color:rgba(74,222,128,.5);color:#4ade80;font-size:11px;">🎯 ใช้ค่าที่แนะนำ (Bull/Bear/Sideways)</button>
+    <button class="ml-train-btn" onclick="resetThresholdsToDefault()" style="border-color:rgba(148,163,184,.5);color:#94a3b8;font-size:11px;">↩️ คืนค่า Default ทั้งหมด</button>
+    <button class="ml-train-btn" onclick="saveRegimeThresholds()" style="border-color:rgba(96,165,250,.5);color:#60a5fa;font-size:11px;">💾 บันทึกลง Supabase</button>
+  </div>
+
+  <div id="configControlTable" style="overflow-x:auto;"></div>
+  <div id="configControlStatus" style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--muted);"></div>
+</main>
+</div>
 
 </div><!-- end .app -->
 
@@ -823,7 +848,7 @@ const sb = {
 
 /* ============================================================ TABS */
 function switchTab(tab) {
-  const tabs = ['signal','portfolio','stocklatest','ml','forward','recovery'];
+  const tabs = ['signal','portfolio','stocklatest','ml','forward','recovery','config'];
   tabs.forEach((t,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', t===tab);
     document.getElementById('tab-'+t).classList.toggle('active', t===tab);
@@ -832,6 +857,7 @@ function switchTab(tab) {
   if(tab==='stocklatest') renderStockLatest();
   if(tab==='ml') renderMLPreview();
   if(tab==='recovery') renderRecoveryTab();
+  if(tab==='config') renderConfigControlTab();
 }
 
 /* ============================================================ STATE */
@@ -2301,6 +2327,7 @@ async function renderTomorrowPrediction() {
   if(!panel) return;
   panel.style.display = 'block';
   panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ...</div>`;
+  await loadActiveRegimeThreshold(); // 🟢 โหลดภาวะตลาด+threshold จริงก่อนคำนวณ (ผูกแล้ว 2026-09-22)
 
   const slopes = await computeRegressionSlopes();
   const latest = getLatest();
@@ -2368,6 +2395,194 @@ async function renderTomorrowPrediction() {
       ${rowsHtml || '<div style="color:var(--muted);font-size:11px;">ไม่มีตัวไหนมีข้อมูลพอทั้ง 2 ฝั่ง</div>'}
     </div>
   `;
+}
+
+// ============================================================
+// 🆕 CONFIG CONTROL (2026-09-22) — แผงควบคุม threshold รวมทั้งระบบ ตามภาวะตลาด
+// ที่มา: ระบบมี threshold กระจายอยู่คนละไฟล์คนละจุด (Turning Point Gate weight, Breadth Saturation
+// percentile, ConDiv noise threshold, TP Confidence weak threshold) — รวมมาไว้ที่เดียวให้ดู/แก้ง่าย
+// เฟสนี้: บันทึกค่าไว้ดูก่อนเท่านั้น ยังไม่ผูกเข้าโค้ดจริง (ตามที่ตกลงกันว่าทำทีละเฟส)
+// ============================================================
+
+// ค่า Default = ค่าที่ระบบใช้งานจริงอยู่ตอนนี้ (ยืนยันจากโค้ดจริงแต่ละจุด ไม่ได้เดา):
+//   W_CYCLE/W_BREADTH = 0.6/0.4  → Turning Point Monitor (frontend, Gate สีไล่โทน)
+//   satPercentile = 85           → Turning Point Monitor (frontend, เตือน Breadth Saturation)
+//   condivNoiseThreshold = 2     → RSI_NOISE_THRESHOLD ใน classifyConDiv (backend)
+//   tpRsiDropWeak = 5            → rsiDropFromPeak > 5 ใน TP Confidence (frontend)
+const REGIME_PARAMS = [
+  { key: 'wCycle',              label: 'Gate: น้ำหนักตำแหน่งในรอบ',        where: 'Turning Point Monitor (frontend)', min:0,  max:1,  step:0.05, wired:false },
+  { key: 'wBreadth',             label: 'Gate: น้ำหนัก Breadth',             where: 'Turning Point Monitor (frontend) — ควรรวมกับด้านบนได้ 1.0', min:0, max:1, step:0.05, wired:false },
+  { key: 'satPercentile',        label: 'Breadth Saturation: percentile เตือน', where: 'Turning Point Monitor (frontend)', min:50, max:99, step:1, wired:false },
+  { key: 'condivNoiseThreshold', label: 'ConDiv: RSI delta ขั้นต่ำ (กัน noise)', where: 'Convergence/Divergence (backend)', min:0,  max:10, step:0.5, wired:true },
+  { key: 'tpRsiDropWeak',        label: 'TP Confidence: RSI ร่วงจาก peak (อ่อนแรง)', where: 'TP Confidence (frontend)', min:0, max:20, step:0.5, wired:false },
+];
+
+const REGIME_DEFAULTS = { wCycle:0.6, wBreadth:0.4, satPercentile:85, condivNoiseThreshold:2, tpRsiDropWeak:5 };
+
+// ค่าที่แนะนำ — เหตุผลสั้นๆ ต่อภาวะ (ยังไม่พิสูจน์ด้วยข้อมูลจริง เป็นจุดเริ่มต้นให้ปรับต่อ):
+const REGIME_RECOMMENDED = {
+  bull: {
+    values: { wCycle:0.55, wBreadth:0.45, satPercentile:88, condivNoiseThreshold:2, tpRsiDropWeak:7 },
+    note: 'รอบกระทิงสั้น (median ~3วัน) ต้องไวต่อ breadth หน่อย · ปล่อยให้ร้อนได้นานกว่าก่อนเตือน (มักวิ่งต่อ) · ยอมดรอว์ดาวน์มากกว่าก่อนตัดสินว่า TP อ่อนแรง (ขาขึ้นแรงมักย่อลึกแล้วไปต่อ)',
+  },
+  bear: {
+    values: { wCycle:0.65, wBreadth:0.35, satPercentile:80, condivNoiseThreshold:3, tpRsiDropWeak:4 },
+    note: 'รอบหมียาว (median ~9วัน) เชื่อตำแหน่งในรอบได้มากกว่า · ไวต่อสัญญาณ capitulation เร็วขึ้น (เตือนเร็ว) · เข้มงวดกับ TP มากขึ้น (การเด้งในหมีมักหลอก ต้องรีบตัดถ้าเริ่มอ่อนแรง)',
+  },
+  sideways: {
+    values: { wCycle:0.4, wBreadth:0.6, satPercentile:85, condivNoiseThreshold:3, tpRsiDropWeak:5 },
+    note: 'ไม่มีรอบชัดให้เชื่อ ให้น้ำหนัก breadth มากกว่า · เกณฑ์ RSI ยกสูงขึ้นกันสัญญาณหลอกจากการแกว่งไปมาไร้ทิศทาง',
+  },
+};
+
+let regimeThresholdState = null; // { bull:{...}, bear:{...}, sideways:{...} } — โหลดจาก Supabase หรือ default
+
+async function loadRegimeThresholds() {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/ml_config?select=weights,trained_at&config_type=eq.regime-thresholds&order=trained_at.desc&limit=1`,
+      { headers: sb._hdr() }
+    );
+    if(!res.ok) return null;
+    const data = await res.json();
+    return data.length ? data[0].weights : null;
+  } catch(err) {
+    console.error('[loadRegimeThresholds] error', err);
+    return null;
+  }
+}
+
+async function saveRegimeThresholds() {
+  const statusEl = document.getElementById('configControlStatus');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ml_config`, {
+      method: 'POST',
+      headers: { ...sb._hdr(), 'Prefer': 'return=minimal' },
+      body: JSON.stringify([{
+        version:     'regime-thresholds-' + new Date().toISOString().slice(0,19).replace(/[:T]/g,'-'),
+        config_type: 'regime-thresholds',
+        weights:     regimeThresholdState,
+        thresholds: {}, normalize: {}, correlations: {}, group_regime: {},
+        note:        'Config Control panel — บันทึกจากแท็บ ⚙️ Config Control',
+        is_active:   true,
+        trained_at:  new Date().toISOString(),
+      }]),
+    });
+    if(!res.ok) {
+      const e = await res.json().catch(()=>({}));
+      statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ บันทึกไม่สำเร็จ: ${e.message || JSON.stringify(e)}</span>`;
+      return;
+    }
+    statusEl.innerHTML = `<span style="color:var(--acc);">💾 บันทึกแล้ว (${new Date().toLocaleTimeString('th-TH')})</span>`;
+  } catch(err) {
+    statusEl.innerHTML = `<span style="color:var(--danger);">⚠️ ${err.message}</span>`;
+  }
+}
+
+function applyRecommendedThresholds() {
+  regimeThresholdState = {
+    bull:     { ...REGIME_RECOMMENDED.bull.values },
+    bear:     { ...REGIME_RECOMMENDED.bear.values },
+    sideways: { ...REGIME_RECOMMENDED.sideways.values },
+  };
+  renderConfigControlTable();
+}
+
+function resetThresholdsToDefault() {
+  regimeThresholdState = {
+    bull:     { ...REGIME_DEFAULTS },
+    bear:     { ...REGIME_DEFAULTS },
+    sideways: { ...REGIME_DEFAULTS },
+  };
+  renderConfigControlTable();
+}
+
+// อ่านค่าจาก input ปัจจุบันในตาราง กลับเข้า regimeThresholdState (เรียกก่อน save/re-render ทุกครั้ง)
+function syncConfigInputsToState() {
+  if(!regimeThresholdState) return;
+  ['bull','bear','sideways'].forEach(regime => {
+    REGIME_PARAMS.forEach(p => {
+      const el = document.getElementById(`cfg-${regime}-${p.key}`);
+      if(el) regimeThresholdState[regime][p.key] = parseFloat(el.value) || 0;
+    });
+  });
+}
+
+function renderConfigControlTable() {
+  const el = document.getElementById('configControlTable');
+  if(!el || !regimeThresholdState) return;
+
+  const regimeLabel = { bull: '🐂 Bull (กระทิง)', bear: '🐻 Bear (หมี)', sideways: '➡️ Sideways (ออกข้าง)' };
+  const regimeNote = { bull: REGIME_RECOMMENDED.bull.note, bear: REGIME_RECOMMENDED.bear.note, sideways: REGIME_RECOMMENDED.sideways.note };
+
+  const headerCells = ['bull','bear','sideways'].map(r =>
+    `<th style="padding:8px;text-align:left;font-size:12px;color:var(--text);min-width:170px;">${regimeLabel[r]}</th>`
+  ).join('');
+
+  const paramRows = REGIME_PARAMS.map(p => {
+    const cells = ['bull','bear','sideways'].map(r => `
+      <td style="padding:6px 8px;">
+        <input type="number" id="cfg-${r}-${p.key}" value="${regimeThresholdState[r][p.key]}"
+          min="${p.min}" max="${p.max}" step="${p.step}"
+          onchange="syncConfigInputsToState()"
+          style="width:80px;background:var(--s1);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:12px;">
+      </td>
+    `).join('');
+    return `
+      <tr style="border-bottom:1px solid rgba(255,255,255,.06);">
+        <td style="padding:6px 8px;">
+          <div style="font-size:12px;color:var(--text);">${p.label}</div>
+          <div style="font-size:9px;color:var(--muted);">${p.where}</div>
+        </td>
+        <td style="padding:6px 8px;font-size:11px;">${p.wired ? '<span style="color:#4ade80;">🟢 ใช้งานจริงแล้ว</span>' : '<span style="color:var(--muted);">⚪ ยังไม่เชื่อม</span>'}</td>
+        <td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--muted);">${REGIME_DEFAULTS[p.key]}</td>
+        ${cells}
+      </tr>
+    `;
+  }).join('');
+
+  const noteRow = `
+    <tr>
+      <td></td><td></td><td></td>
+      ${['bull','bear','sideways'].map(r => `<td style="padding:8px;font-size:9px;color:var(--muted);line-height:1.5;vertical-align:top;">${regimeNote[r]}</td>`).join('')}
+    </tr>
+  `;
+
+  el.innerHTML = `
+    <table style="border-collapse:collapse;width:100%;">
+      <thead>
+        <tr style="border-bottom:2px solid rgba(255,255,255,.15);">
+          <th style="padding:8px;text-align:left;font-size:12px;color:var(--text);min-width:220px;">Threshold</th>
+          <th style="padding:8px;text-align:left;font-size:12px;color:var(--muted);min-width:110px;">สถานะ</th>
+          <th style="padding:8px;text-align:left;font-size:12px;color:var(--muted);min-width:80px;">Default</th>
+          ${headerCells}
+        </tr>
+      </thead>
+      <tbody>
+        ${paramRows}
+        ${noteRow}
+      </tbody>
+    </table>
+  `;
+}
+
+async function renderConfigControlTab() {
+  const statusEl = document.getElementById('configControlStatus');
+  if(statusEl) statusEl.innerHTML = `<span style="color:var(--muted);">⏳ กำลังโหลด...</span>`;
+
+  const saved = await loadRegimeThresholds();
+  if(saved && saved.bull && saved.bear && saved.sideways) {
+    regimeThresholdState = saved;
+    if(statusEl) statusEl.innerHTML = `<span style="color:var(--muted);">โหลดค่าที่บันทึกไว้ล่าสุดแล้ว</span>`;
+  } else {
+    regimeThresholdState = {
+      bull:     { ...REGIME_DEFAULTS },
+      bear:     { ...REGIME_DEFAULTS },
+      sideways: { ...REGIME_DEFAULTS },
+    };
+    if(statusEl) statusEl.innerHTML = `<span style="color:var(--muted);">ยังไม่เคยบันทึก — เริ่มจากค่า Default ทั้งหมด (กด "ใช้ค่าที่แนะนำ" หรือแก้เองแล้วกดบันทึก)</span>`;
+  }
+  renderConfigControlTable();
 }
 
 async function renderQuadrantAccuracy() {
@@ -2596,6 +2811,42 @@ async function renderMarketSignalLog() {
 // เช็คทุกหุ้น (ไม่กรอง RSI ขอบเขตก่อน) ตามที่ตกลงกันไว้ — ไม่แก้ detectRSIDivergence เดิมเลย
 // (Recovery Forecast ด้านบนยังใช้ของเดิมอยู่ตามปกติ) แค่เพิ่มฟังก์ชันใหม่แยกต่างหาก
 // ============================================================
+// 🆕 (2026-09-22) — โหลดภาวะตลาดปัจจุบัน + threshold ที่ตรงกับภาวะนั้น เก็บไว้ใน global เดียว
+// ให้ classifyConDiv() (sync function) อ่านได้โดยไม่ต้องแปลงเป็น async ทั้งฟังก์ชัน (เสี่ยงน้อยกว่า)
+// Fallback: ถ้าดึง regime หรือ config ไม่ได้ ใช้ REGIME_DEFAULTS เดิมเป๊ะ — พฤติกรรมเหมือนก่อนผูกทุกอย่าง
+let activeRegimeThreshold = { regime: 'unknown', values: { ...REGIME_DEFAULTS } };
+
+function detectRegimeFromRatio(regime, bullishRatio) {
+  if(bullishRatio != null && bullishRatio >= 0.4 && bullishRatio <= 0.6) return 'sideways';
+  if(regime === 'BULL') return 'bull';
+  if(regime === 'BEAR') return 'bear';
+  return 'sideways'; // ไม่รู้จริงๆ ก็ปลอดภัยสุดคือกลาง
+}
+
+async function loadActiveRegimeThreshold() {
+  try {
+    const [regimeRes, cfgRes] = await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/market_regime?select=regime_date,regime,bullish_ratio&order=regime_date.desc&limit=1`, { headers: sb._hdr() }),
+      fetch(`${SUPABASE_URL}/rest/v1/ml_config?select=weights,trained_at&config_type=eq.regime-thresholds&order=trained_at.desc&limit=1`, { headers: sb._hdr() }),
+    ]);
+    const regimeData = regimeRes.ok ? await regimeRes.json() : [];
+    const cfgData    = cfgRes.ok    ? await cfgRes.json()    : [];
+
+    const regime = regimeData.length
+      ? detectRegimeFromRatio(regimeData[0].regime, regimeData[0].bullish_ratio)
+      : 'sideways';
+
+    const savedThresholds = cfgData.length ? cfgData[0].weights : null;
+    const values = (savedThresholds && savedThresholds[regime]) ? savedThresholds[regime] : { ...REGIME_DEFAULTS };
+
+    activeRegimeThreshold = { regime, values };
+  } catch(err) {
+    console.error('[loadActiveRegimeThreshold] error — ใช้ default', err);
+    activeRegimeThreshold = { regime: 'unknown', values: { ...REGIME_DEFAULTS } };
+  }
+  return activeRegimeThreshold;
+}
+
 function classifyConDiv(symbol, lookbackDays = 20) {
   const rows = allRows
     .filter(r => r.symbol === symbol && r.price > 0 && r.rsi != null && !isNaN(r.rsi))
@@ -2625,7 +2876,9 @@ function classifyConDiv(symbol, lookbackDays = 20) {
   const avgRSI2 = secondHalf.reduce((s,r) => s + r.rsi, 0) / secondHalf.length;
   const rsiDelta = avgRSI2 - avgRSI1;
 
-  const RSI_NOISE_THRESHOLD = 2; // ต้องเปลี่ยน ≥2 จุด RSI ถึงนับว่ามีนัยสำคัญ ไม่ใช่ noise เล็กๆ
+  // 🟢 (2026-09-22) ใช้งานจริงแล้ว — อ่านจาก Config Control ตามภาวะตลาดที่ตรวจจับได้ตอนนี้
+  // Fallback = 2 (ค่า default เดิม) ถ้ายังไม่เคย loadActiveRegimeThreshold() มาก่อน
+  const RSI_NOISE_THRESHOLD = activeRegimeThreshold?.values?.condivNoiseThreshold ?? 2;
   let signalDir;
   if(Math.abs(rsiDelta) < RSI_NOISE_THRESHOLD) signalDir = 'flat';
   else signalDir = rsiDelta > 0 ? 'up' : 'down';
@@ -2722,6 +2975,7 @@ async function renderConDivLog() {
   panel.style.display = 'block';
   panel.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:11px;">⏳ กำลังคำนวณ บันทึก และโหลด...</div>`;
 
+  await loadActiveRegimeThreshold(); // 🟢 โหลดภาวะตลาด+threshold จริงก่อนคำนวณ (ผูกแล้ว 2026-09-22)
   const snap = computeConDivSnapshot();
   const saved = await saveConDivSnapshot(snap);
   const history = await loadConDivHistory();
@@ -2771,9 +3025,14 @@ async function renderConDivLog() {
     </div>
   `).join('');
 
+  const regimeLabelTh = { bull: '🐂 Bull', bear: '🐻 Bear', sideways: '➡️ Sideways', unknown: '❔ ไม่ทราบ (ใช้ Default)' };
+
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#c084fc;margin-bottom:10px;">
       🗳️ CONVERGENCE / DIVERGENCE — 4 ภาวะ (${saved.ok?'💾 บันทึกแล้ว':`⚠️ บันทึกไม่สำเร็จ: ${saved.error}`}) · ${history.length} วันที่มีข้อมูลสะสม
+    </div>
+    <div style="font-size:10px;color:#4ade80;margin-bottom:8px;">
+      🟢 ใช้งานจริงแล้ว — ภาวะตอนนี้: <b>${regimeLabelTh[activeRegimeThreshold.regime]}</b> · RSI delta ขั้นต่ำ: <b>${activeRegimeThreshold.values.condivNoiseThreshold} จุด</b> (จาก ⚙️ Config Control)
     </div>
     <div style="font-size:9px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
       "ตลาด" = ราคา vs EMA50 รายตัว (นิยามเดียวกับ Gate/Dashboard) · "สัญญาณ" = ทิศทาง RSI เฉลี่ยครึ่งหลัง vs ครึ่งแรกของ 20 วันล่าสุด
