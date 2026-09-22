@@ -2,7 +2,8 @@
 
 > เอกสารนี้สรุปทั้งระบบ (frontend + backend) ให้ chat ใหม่เริ่มงานได้ทันทีโดยไม่ต้องอธิบายซ้ำ
 > วางไฟล์นี้ไว้ที่ root ของ repo `signal_supabase` เป็น `README.md`
-> **อัพเดตรอบนี้ (สำคัญที่สุด, 2026-09-18/19):** เพิ่มแท็บใหม่ **"🌊 จุดเปลี่ยนรอบ" (Turning Point Monitor)** ฝั่ง frontend — รวม Gate + Breadth Saturation (2 แท่ง) + Divergence Trend คำนวณสดจาก Supabase ล้วนๆ ไม่พึ่ง backend เลย + แก้บั๊ก dedupe หลาย session/วัน 3 จุด + Forward Model แยกป้าย 4 กรณี (++/--/+-/-+) พร้อมปุ่มเช็ค accuracy แยกตามคู่สัญญาณ — ดูหัวข้อ "🌊 Turning Point Monitor" ด้านล่าง
+> **อัพเดตรอบนี้ (สำคัญที่สุด, 2026-09-21/22):** เพิ่ม Convergence/Divergence 4 ภาวะ (แท็บ Recovery Forecast) + Forward Model 1D + Price Timeline คาดการณ์ + **⚙️ Config Control panel** (แท็บใหม่ที่ backend — ผูก threshold 5 ตัวเข้าโค้ดจริงครบแล้วตามภาวะตลาด) + แก้บั๊ก order/limit ร้ายแรงที่ backend (pattern เดียวกับ frontend) + เพิ่มหัวข้อ **Supabase schema** และ **Deployment (Cloudflare/GitHub Pages)** เต็มรูปแบบ — ดูหัวข้อ "🗳️ Convergence/Divergence", "🔮 Forward Model 1D", "⚙️ Config Control", "🗄️ Supabase", "☁️ Deployment" ด้านล่าง
+> **อัพเดตก่อนหน้า (2026-09-18/19):** เพิ่มแท็บใหม่ **"🌊 จุดเปลี่ยนรอบ" (Turning Point Monitor)** ฝั่ง frontend — รวม Gate + Breadth Saturation (2 แท่ง) + Divergence Trend คำนวณสดจาก Supabase ล้วนๆ ไม่พึ่ง backend เลย + แก้บั๊ก dedupe หลาย session/วัน 3 จุด + Forward Model แยกป้าย 4 กรณี (++/--/+-/-+) พร้อมปุ่มเช็ค accuracy แยกตามคู่สัญญาณ
 > **อัพเดตก่อนหน้า:** แก้บั๊ก sign ของ weight เสร็จสมบูรณ์ทั้งวงจร (คำนวณ weight + กลับทิศทางเปรียบเทียบใน 10 จุด) — ก่อนหน้านี้แก้แค่ครึ่งเดียวแล้วเกิดบั๊กใหม่ (STX ร้อนสุดกลับได้ BUY, ONDS เย็นสุดกลับได้ SELL) วันนี้แก้ครบวงจรแล้วยืนยันด้วยข้อมูลจริง
 > **อัพเดตล่าสุด (2026-09-10):** เพิ่ม Fear Streak Badge (มิติใหม่ ไม่แตะของเดิม) + สร้างระบบ ML Forward Model 7D/14D ทดลองคู่ขนาน (ดูหัวข้อ "ML Forward Model" — ตอนนี้ผ่านเกณฑ์ >55% แล้ว ดูหัวข้อ Turning Point Monitor) + แก้บั๊ก Leader Tag timing (บั๊กที่ 3 ของสาย Leader Tag ขัดกับ Action)
 
@@ -354,7 +355,140 @@ compositeScore = (ตำแหน่งในรอบ % × 60%) + (breadth ท�
 
 ---
 
-- Save/Refresh error บนมือถือ → มักเป็นเน็ตสะดุด เช็ค DB ก่อน
+## 🗄️ Supabase — โครงสร้างฐานข้อมูล + บทเรียนสำคัญ (2026-09-22)
+
+### ตารางหลักที่ใช้จริง
+| ตาราง | ใช้ทำอะไร | เขียนจากไฟล์ไหน |
+|---|---|---|
+| `stock_signals` | ราคา/RSI/EMA/action ฯลฯ รายหุ้นรายวัน — ต้นทางของแทบทุกฟีเจอร์ | frontend (ปุ่ม Save to Supabase) |
+| `market_regime` | Gate — วันที่เท่าไหร่ของรอบกระทิง/หมี (`regime_date`, `regime`, `bullish_ratio`) | frontend (upsert อัตโนมัติทุก Refresh) |
+| `ml_config` | **key-value store กลาง** ใช้ `config_type` แยกประเภท — เก็บได้หลายอย่างในตารางเดียว | ทั้ง frontend และ backend |
+| `symbols`, `groups`, `portfolio`, `live_quotes`, `trade_journal` | ข้อมูลตั้งต้น/พอร์ตจริง ไม่ใช่ snapshot รายวัน | ตามหน้าที่ |
+
+### 🐛 บั๊กร้ายแรงที่สุดที่เจอทั้งโปรเจกต์ — `order=asc` + ไม่มี `limit`
+**อาการ:** Breadth Saturation/ConDiv เห็นข้อมูลเก่ากว่าความจริงมาก ทั้งที่ Save สำเร็จแล้วจริงๆ
+**สาเหตุ:** Supabase/PostgREST มี default row limit ต่อ request (มักเป็น 1000) — query เรียง `order=run_seq.asc` (เก่า→ใหม่) พอข้อมูลสะสมเกิน limit จะ**ตัดแถวใหม่สุดทิ้ง**เพราะอยู่ท้ายลำดับ ไม่ใช่ตัดแถวเก่าอย่างที่ควรจะเป็น
+**แก้:** เปลี่ยนทุก query ที่ดึง `stock_signals` เป็น `order=run_seq.desc&limit=5000` เสมอ (เรียงใหม่→เก่า ถ้าโดนตัดจะตัดของเก่าแทน) — **เจอบั๊กนี้ซ้ำ 2 รอบ (frontend ก่อน, backend ทีหลัง) เพราะ pattern เดียวกันถูก copy ไปใช้คนละไฟล์โดยไม่เช็คซ้ำ**
+**กฎกันซ้ำ:** ทุก query ที่มีโอกาสข้อมูลสะสมเยอะ (`stock_signals`, `ml_config` แบบ log) ต้องมี `order=...desc` + `limit=` ระบุชัดเจนเสมอ ห้ามปล่อย default
+
+### `stock_signals` — UNIQUE constraint ตัวจริง (เช็คแล้วยืนยันด้วย SQL)
+```sql
+stock_signals_unique_per_save   UNIQUE (symbol_id, signal_date, session, created_at)
+```
+**`created_at` อยู่ใน key ด้วย** — แปลว่าแทบไม่มีทางชนกันเลย (Save กี่ครั้งก็ insert แถวใหม่ได้เสมอ ไม่ทับกัน) **เคยเข้าใจผิดคิดว่า `ignore-duplicates` เป็นสาเหตุที่ข้อมูลไม่อัพเดต** (สมมติฐานผิด) ก่อนจะรู้ว่าสาเหตุจริงคือบั๊ก order/limit ด้านบน — **บทเรียน: ก่อนเชื่อสมมติฐานเรื่อง "ข้อมูลหาย" ให้เช็คข้อมูลจริงในฐานข้อมูลด้วย SQL ตรงๆ ก่อนเสมอ** อย่าเดาจากพฤติกรรมที่เห็นในแอปอย่างเดียว
+
+### `ml_config` — CHECK constraint ต้องอัปเดตทุกครั้งที่เพิ่ม `config_type` ใหม่
+คอลัมน์ `config_type` มี CHECK constraint ล็อครายชื่อที่อนุญาตไว้ (`ml_config_config_type_check`) — ถ้าใช้ค่าใหม่ที่ไม่อยู่ในรายการ **INSERT จะ error ทันที** (`violates check constraint`) ต้องแก้ที่ SQL Editor บน Supabase โดยตรง (Postgres ไม่มีคำสั่งแก้ CHECK ตรงๆ ต้อง DROP แล้ว ADD ใหม่ทั้งก้อน ไม่กระทบข้อมูลเดิม):
+```sql
+ALTER TABLE ml_config DROP CONSTRAINT ml_config_config_type_check;
+ALTER TABLE ml_config ADD CONSTRAINT ml_config_config_type_check
+  CHECK (config_type = ANY (ARRAY['value','backend','live','value-live','pricerange',
+    'forward-snapshot','market-signal-log','condiv-log','regime-thresholds']::text[]));
+```
+**รายชื่อ `config_type` ที่ใช้จริงตอนนี้ (9 ตัว):** `value`, `backend`, `live`, `value-live`, `pricerange`, `forward-snapshot`, `market-signal-log`, `condiv-log`, `regime-thresholds`
+**กฎกันพลาด:** ทุกครั้งที่จะเพิ่ม `config_type` ใหม่ในโค้ด ต้องรัน `ALTER TABLE` เพิ่มชื่อเข้า constraint ก่อนเสมอ ไม่งั้น Save จะ error เงียบๆ (เจอปัญหานี้ 2 รอบติด — ConDiv และ Config Control panel)
+
+**วิธีเช็ค constraint ปัจจุบันแบบไม่โดนตัดทอน (ข้อความยาวจะโดน UI ตัด):**
+```sql
+SELECT unnest(regexp_matches(pg_get_constraintdef(oid), '''([^'']+)''', 'g')) AS allowed_value
+FROM pg_constraint WHERE conname = 'ml_config_config_type_check';
+```
+
+---
+
+## ☁️ Deployment — Cloudflare Worker (frontend) + GitHub Pages (backend)
+
+| | Frontend | Backend |
+|---|---|---|
+| **โฮสต์ที่** | Cloudflare Workers | GitHub Pages |
+| **URL** | `frontsupabase.surathin3320500281957.workers.dev` | `surathin3320500281957-cmd.github.io` |
+| **Repo/ที่เก็บไฟล์** | Cloudflare dashboard โดยตรง | GitHub repo ชื่อ `signal_supabase` |
+| **ชื่อไฟล์จริงบน repo** | — | **`index.html`** (ไม่ใช่ `index_backend.html`! ชื่อ `index_backend.html` เป็นแค่ชื่อที่ใช้เรียกกันในบทสนทนาเพื่อแยกจาก frontend เท่านั้น) |
+| **วิธี deploy** | อัพโหลดผ่าน Cloudflare dashboard | **Upload files** ผ่านหน้า GitHub Code (ไม่ใช้ copy-paste เนื้อไฟล์ยาวๆ เพราะเสี่ยงตัดทอนบนมือถือ) → Commit → GitHub Actions build อัตโนมัติ |
+| **เช็คสถานะ deploy** | Cloudflare dashboard → Deployments | GitHub repo → แท็บ Actions → "pages build and deployment" |
+
+### 🐛 บั๊กที่ไม่ใช่บั๊ก — cache ล้าหลัง deploy
+ทั้ง Cloudflare และ GitHub Pages มี edge cache ที่บางทีไล่ตามไฟล์ใหม่ไม่ทันทันที (แม้ deploy status ขึ้น "Success" แล้ว) **เจอปัญหานี้ซ้ำหลายรอบตลอดทั้งโปรเจกต์**
+**วิธีเช็คให้ชัวร์ก่อนสรุปว่าโค้ดผิด:**
+1. เช็คก่อนว่า deploy สำเร็จจริง (Actions log / Cloudflare dashboard)
+2. เปิดเว็บใน **Incognito/Private tab ใหม่** (กัน browser cache)
+3. ถ้าเป็นไปได้ ลองคนละเบราว์เซอร์ไปเลย (เช่น Safari สดๆ)
+4. ถ้ายังไม่ขึ้นทั้งที่ทำครบ → รอ 1-2 นาทีแล้วลองใหม่ (edge cache บางทีต้องใช้เวลาไล่ตามจริงๆ)
+
+### 🐛 เคสพิเศษ — deploy ไฟล์เก่าทับของใหม่โดยไม่ตั้งใจ
+เคยเกิดขึ้นจริง: ผู้ใช้อัพโหลดไฟล์ผิดเวอร์ชันทับของที่เพิ่งพัฒนาไปเมื่อวันก่อน (สังเกตจาก UI หน้าตาเปลี่ยนไปเป็นเวอร์ชันเก่าทั้งที่ deploy สำเร็จ) — **วิธีกู้คืนที่ได้ผล:** ให้ AI ส่งไฟล์เวอร์ชันล่าสุดที่เก็บไว้ในเซสชันกลับมาให้ใหม่ แล้ว deploy ทับอีกรอบ ไม่ต้องงมหาผ่าน git history ถ้า AI ยังมีไฟล์ถูกต้องอยู่ในมือ
+
+---
+
+## 🗳️ Convergence/Divergence — 4 ภาวะตลาด (2026-09-21/22, แท็บ Recovery Forecast)
+
+**ที่มา:** อยากรู้ในแต่ละภาวะตลาด (กระทิง/หมี) มีหุ้นกี่ตัวที่ "ยืนยัน" (Convergence) กับกี่ตัวที่ "เริ่มขัดแย้ง" (Divergence) — คล้ายนับโหวตรายวัน ต่อยอดจาก Divergence ตัวเดิมที่วัดได้แค่ทิศทางเดียว (หมี+สัญญาณขึ้น) ให้ครบทั้ง 4 การผสมทิศทาง
+
+**นิยาม:**
+```
+"ตลาด" (marketDir) = ราคา vs EMA50 รายตัว (นิยามเดียวกับ Gate/Dashboard — พิสูจน์แล้วว่าแม่น
+                       เคยลองใช้ EMA20 vs EMA50 ก่อน แต่ตัวเลขไม่ตรงกับ Dashboard เลย เปลี่ยนกลับ)
+"สัญญาณ" (signalDir) = ทิศทาง RSI เฉลี่ยครึ่งหลัง vs ครึ่งแรกของ 20 วันล่าสุด
+                        ต้องต่าง ≥2 จุด (RSI_NOISE_THRESHOLD) ถึงนับว่ามีนัยสำคัญ ไม่งั้นเป็น Neutral
+
+4 ภาวะ:
+  ตลาดขึ้น + สัญญาณขึ้น → Bullish Convergence  (ยืนยันขาขึ้น)
+  ตลาดขึ้น + สัญญาณลง   → Bearish Divergence   (เตือนใกล้จบขาขึ้น)
+  ตลาดลง   + สัญญาณลง   → Bearish Convergence  (ยืนยันขาลง)
+  ตลาดลง   + สัญญาณขึ้น → Bullish Divergence   (เตือนใกล้จบขาลง — ตัวเดิมที่มีอยู่แล้วก่อนหน้านี้)
+```
+
+**⚠️ บทเรียนเรื่องตำแหน่ง:** ตอนคุยกันตัดสินใจย้ายจาก Recovery Forecast ไป ML Analyzer แต่**โค้ดจริงไม่เคยถูกย้ายตาม** ยังอยู่ Recovery Forecast เดิม — ทำให้เสียเวลาหากันนานมาก **กฎกันพลาด: หลังคุยตัดสินใจ "จะย้ายไปไว้ตรงไหน" ต้องเช็คโค้ดจริงว่าทำตามจริงหรือยัง ก่อนบอกตำแหน่งให้ผู้ใช้ตามหา**
+
+**ยอดรวมกระทิง/หมี:** `bullTotal = bullish_convergence + bearish_divergence`, `bearTotal = bearish_convergence + bullish_divergence` — ถ้าต่างจากยอด Dashboard (ที่นับจากราคาล้วนๆ ไม่สนสัญญาณ) แปลว่ามีหุ้นที่ Neutral (สัญญาณ RSI ยังไม่ชัด) ปนอยู่ ไม่ใช่บั๊ก — ยิ่งช่องว่างกว้าง ยิ่งบอกว่าตลาดขึ้น/ลงแบบ "ไม่มีแรงหนุนชัดเจน"
+
+---
+
+## 🔮 Forward Model 1D + Price Timeline คาดการณ์ (2026-09-21/22)
+
+**ต่อยอดจาก Forward Model 7D/14D เดิม** — `trainForwardModel(days)` เป็น generic function รับ `days` เท่าไหร่ก็ได้อยู่แล้ว เพิ่ม `trainForwardModel(1)` ก็ใช้งานได้ทันทีไม่ต้องเขียนใหม่
+
+**ลำดับการใช้งานที่ต้องรู้:**
+```
+1. กด "Train Forward 1D" ก่อนเสมอ (สร้าง mlForwardModels[1])
+2. กด "Forward Convergence 7D vs 14D" (ปุ่มเดิม) — ปุ่มนี้แหละที่บันทึก s1 ลง snapshot
+   (ไม่ใช่ปุ่ม ConDiv ตามที่เข้าใจผิดตอนแรก)
+3. ทำซ้ำทุกวัน สะสม n≥20 คู่ข้อมูล ถึงจะเห็นตัวเลข % คาดการณ์จริง (ก่อนหน้านั้นเห็นแค่ทิศทาง ↑/↓)
+```
+
+**Regression:** ผ่านจุดกำเนิด (`b = Σxy/Σx²`, ไม่มี intercept) เหตุผล: คะแนนโมเดล=0 ควรแปลว่า return คาดหวัง=0 ด้วย ลด overfit ตอน sample น้อย — สูตรเดียวกับที่ใช้กับ 7D/14D มาก่อน
+
+**บั๊กที่เจอและแก้แล้ว:** ตอน `n=0` (ยังไม่มี snapshot อายุครบ) `b=0` พอดี ทำให้ fallback ทิศทางเดิม (เช็ค `predReturn>=0`) โชว์ "↑" ผิดๆ ให้ทุกตัวเพราะ `0>=0` เป็นจริงเสมอ — แก้ให้ fallback ใช้เครื่องหมายดิบของ `s1`/`s7`/`s14` เอง (ตัวเดียวกับที่ badge quadrant ใช้) แทน และแยกกรณี `n=0` เป๊ะให้โชว์ "—" ตรงๆ
+
+**ตาราง "+1D คาดการณ์ + ConDiv":** รวม 2 โมเดลเข้าด้วยกัน ไฮไลต์เหลืองอัตโนมัติเมื่อโมเดล +1D กับ ConDiv ขัดกันเอง (เช่น โมเดลทายขึ้นแต่ RSI เป็น Bearish Divergence) — ช่วยกรองหาเคสที่ "ราคาอาจขึ้นได้จริง แต่แรงขับเริ่มอ่อน ต้องระวัง"
+
+---
+
+## ⚙️ Config Control — แผงควบคุม threshold ตามภาวะตลาด (2026-09-22, แท็บใหม่ที่ backend)
+
+**ที่มา:** threshold สำคัญกระจายอยู่คนละไฟล์คนละจุด ไม่มีที่เดียวดู/แก้ตามภาวะตลาด (หมี/กระทิง/ออกข้าง)
+
+**5 threshold ที่รวมไว้ (ค่า Default = ค่าที่ระบบ hardcode มาแต่แรก ยืนยันจากโค้ดจริง):**
+| Threshold | Default | อยู่ไฟล์ไหน |
+|---|---|---|
+| Gate: น้ำหนักตำแหน่งในรอบ (`wCycle`) | 0.6 | frontend |
+| Gate: น้ำหนัก Breadth (`wBreadth`) | 0.4 | frontend |
+| Breadth Saturation percentile เตือน | 85 | frontend |
+| ConDiv RSI delta ขั้นต่ำ | 2 | backend |
+| TP Confidence RSI ร่วงจาก peak (อ่อนแรง) | 5 | frontend |
+
+**การตรวจจับภาวะตลาด:** อ่าน `market_regime` แถวล่าสุด → ถ้า `bullish_ratio` อยู่ 0.4-0.6 = **sideways** ไม่ว่า Gate จะบันทึกว่า BULL/BEAR ไว้ก็ตาม นอกนั้นใช้ค่า `regime` ตรงๆ (BULL→bull, BEAR→bear)
+
+**สถานะ: ผูกเข้าโค้ดจริงครบทั้ง 5 ตัวแล้ว (🟢)** — วิธีผูกที่ใช้ (สำคัญ เพราะ 2 ไฟล์มีข้อจำกัดต่างกัน):
+- ฟังก์ชันที่ต้องใช้ค่านี้เป็น **sync** (ไม่ใช่ async) แต่ต้องโหลดจาก Supabase (async) → แก้ด้วยการโหลดครั้งเดียวเก็บไว้ใน global variable (`activeRegimeThreshold`) ก่อนเรียกฟังก์ชัน sync พวกนั้น ไม่ต้องแปลงทั้งฟังก์ชันเป็น async (เสี่ยงน้อยกว่า กระทบน้อยกว่า)
+- Frontend โหลดตั้งแต่ต้นของ `load()` หลัก **แบบไม่ await** (กันบล็อก UI) — ถ้า TP Confidence คำนวณเสร็จก่อนโหลดเสร็จ รอบนั้น fallback เป็น Default ชั่วคราว แล้วถูกต้องเองรอบ Refresh ถัดไป (ยอมรับ trade-off นี้เพื่อความเร็ว)
+- **Fallback ปลอดภัยทุกจุด:** ถ้ายังไม่เคย Save ในแผง หรือโหลดจาก Supabase ไม่สำเร็จ ใช้ค่า Default เป๊ะ — พฤติกรรมเหมือนก่อนมี Config Control ทุกอย่าง ถ้าไม่มีใครไปแก้ค่า
+
+**ป้ายยืนยันการทำงานจริง (ไม่ใช่แค่เชื่อคำพูด):** ทุกจุดที่ผูกแล้วจะมีบรรทัด `🟢 ใช้งานจริงแล้ว — ภาวะตอนนี้: ... (จาก ⚙️ Config Control)` โชว์ค่าที่ใช้จริง ณ ตอนนั้น + ตาราง Config Control เองมีคอลัมน์ "สถานะ" บอกว่าจุดไหนผูกแล้ว (🟢) จุดไหนยัง (⚪)
+
+**วิธีทดสอบว่าผูกจริง:** ตั้งค่าให้สุดโต่งชัดๆ ในแผง (เช่น TP RSI drop = 100) → Save → Refresh → ดูว่าผลลัพธ์เปลี่ยนไปสมเหตุสมผลไหม (ไม่มีตัวไหนขึ้น "อ่อนแรง" เลยถ้า threshold สูงเกินจะแตะ) — เห็นผลต่างชัดเจน = ยืนยันว่าใช้งานจริง ไม่ใช่ UI ลอยๆ
+
+
 - แก้โค้ดไม่เห็นผล → Private tab ใหม่
 - ราคาไม่ตรงข้ามแอป → เช็ค `run_seq`
 - ก่อนแก้ไฟล์ → ขอไฟล์ปัจจุบันเสมอ
@@ -363,3 +497,9 @@ compositeScore = (ตำแหน่งในรอบ % × 60%) + (breadth ท�
 - **เพิ่มฟังก์ชันใหม่ที่ query `stock_signals` → ต้อง dedupe ด้วย `run_seq` เสมอ** (group by symbol_id+signal_date เก็บ run_seq สูงสุด) ไม่งั้นนับเกินจำนวน symbol จริงจากหลาย session/วัน
 - **แท็บ "จุดเปลี่ยนรอบ" ตัวเลขไม่ตรง Dashboard สดๆ** → ปกติ ไม่ใช่บั๊ก เพราะแท็บนี้อ่านจาก `stock_signals` ที่อัพเดตเฉพาะตอนกด "Save to Supabase" — ต้องกด Save ที่ Dashboard ก่อนเสมอ แล้วค่อยกด Refresh ที่แท็บนี้
 - **UI ไม่อัพเดตหลัง deploy ทั้งที่ไฟล์ถูกต้อง** → เช็ค Cloudflare/เบราว์เซอร์ cache ก่อน (ลอง Incognito) อาจไม่ใช่บั๊กโค้ด แค่มาช้า
+- **ตัวเลขจากคนละแหล่งไม่ตรงกันทั้งที่ควรจะสะท้อนตลาดเดียวกัน** → เช็คนิยามที่ใช้ก่อน (เช่น EMA20vsEMA50 ≠ ราคาvsEMA50) อย่าสรุปว่าเป็นบั๊กข้อมูลทันที บางทีเป็นบั๊ก "นิยามไม่ตรงกัน" ระหว่าง 2 ระบบ
+- **เพิ่ม `config_type` ใหม่ใน `ml_config` → ต้องรัน SQL `ALTER TABLE` เพิ่มเข้า CHECK constraint ก่อนเสมอ** ไม่งั้น Save error ทันที (เจอ 2 รอบ: ConDiv, Config Control) — เช็ค constraint ปัจจุบันด้วย query `regexp_matches` ก่อนเขียน ALTER กันพลาดค่าเดิม
+- **Query ที่ดึง `stock_signals`/`ml_config` แบบ log ต้องมี `order=...desc&limit=` เสมอ** ห้ามปล่อย default — ไม่งั้นเสี่ยง silent truncation ตัดข้อมูลใหม่ทิ้งเงียบๆ (เจอบั๊กร้ายแรงสุดของโปรเจกต์จากจุดนี้ ซ้ำ 2 ไฟล์)
+- **ชื่อไฟล์บน GitHub repo backend คือ `index.html`** ไม่ใช่ `index_backend.html` (ชื่อหลังเป็นแค่ชื่อเรียกในบทสนทนา) — อย่าสับสนเวลาหาไฟล์บน repo จริง
+- **คุยตัดสินใจ "จะย้ายฟีเจอร์ไปแท็บไหน" แล้วต้องเช็คโค้ดจริงว่าทำตามหรือยัง** ก่อนบอกตำแหน่งให้ผู้ใช้ไปตามหา — การคุยกันด้วยคำพูดไม่ได้แปลว่าโค้ดถูกย้ายจริงเสมอไป
+- **เจอปัญหา "ข้อมูลไม่อัพเดต/หาย" → เช็คข้อมูลจริงในฐานข้อมูลด้วย SQL ตรงๆ ก่อนเสมอ** อย่าเดาสาเหตุจากพฤติกรรมที่เห็นในแอปอย่างเดียว (เคยเดาผิดว่าเป็น `ignore-duplicates` ทั้งที่สาเหตุจริงคือ order/limit)
