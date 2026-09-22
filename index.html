@@ -2547,17 +2547,30 @@ async function renderMarketSignalLog() {
 
   const snap = computeMarketSignalSnapshot();
   const saved = await saveMarketSignalSnapshot(snap);
-  const history = await loadMarketSignalHistory();
+  // 🆕 (2026-09-22) เชื่อมกับ ConDiv log ด้วยวันที่ — เพิ่มคอลัมน์ Convergence % ตามที่ขอ
+  // หมายเหตุ: ConDiv log เพิ่งเริ่มเก็บเมื่อไม่กี่วันก่อนและเคย save ไม่สำเร็จ (constraint ที่ Supabase
+  // ยังไม่ได้แก้) วันไหนไม่มีข้อมูล ConDiv จะโชว์ "—" ไม่ได้แปลว่า query ผิด
+  const [history, conDivHistory] = await Promise.all([loadMarketSignalHistory(), loadConDivHistory()]);
+  const conDivByDate = {};
+  conDivHistory.forEach(c => { conDivByDate[c.date] = c; });
 
-  const rowsHtml = history.map(s => `
-    <div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:11px;">
+  const rowsHtml = history.map(s => {
+    const cd = conDivByDate[s.date];
+    const convPct = cd ? Math.round((cd.bullish_convergence + cd.bearish_convergence) / cd.total * 100) : null;
+    const convHtml = convPct != null
+      ? `<span style="color:var(--acc);">Convergence ${convPct}% (${cd.bullish_convergence + cd.bearish_convergence}/${cd.total})</span>`
+      : `<span style="color:var(--muted);">Convergence —</span>`;
+    return `
+    <div style="display:flex;gap:14px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.05);font-family:var(--mono);font-size:11px;flex-wrap:wrap;">
       <span style="width:100px;">${s.date}</span>
       <span style="color:${s.fearProxy>=70?'var(--acc)':s.fearProxy<=35?'var(--danger)':'var(--warn)'};width:110px;">Fear≈${s.fearProxy}</span>
       <span style="color:var(--acc);width:90px;">🐂${s.bullish}</span>
       <span style="color:var(--danger);width:90px;">🐻${s.bearish}</span>
-      <span style="color:var(--text);">Divergence ${s.divergencePct}% (${s.divergentCount}/${s.total})</span>
+      <span style="color:var(--text);width:170px;">Divergence ${s.divergencePct}% (${s.divergentCount}/${s.total})</span>
+      ${convHtml}
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   panel.innerHTML = `
     <div style="font-family:var(--mono);font-size:9px;letter-spacing:2px;color:#8FCFBA;margin-bottom:10px;">
@@ -2565,7 +2578,8 @@ async function renderMarketSignalLog() {
     </div>
     <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">
       ⚠️ Fear≈ คำนวณจาก stock_signals (คนละแหล่งจาก Fear Index หน้า frontend เล็กน้อย — ดูแนวโน้มเทียบกัน ไม่ใช่ตัวเลขเป๊ะเดียวกัน)
-      ยังไม่พอจะคำนวณ correlation จริง (ต้องมีหลายสิบวันขึ้นไป) — นี่คือ log ให้ดูด้วยตาไปก่อน
+      ยังไม่พอจะคำนวณ correlation จริง (ต้องมีหลายสิบวันขึ้นไป) — นี่คือ log ให้ดูด้วยตาไปก่อน ·
+      Convergence % มาจาก ConDiv log (config_type=condiv-log) — วันไหนโชว์ "—" แปลว่ายังไม่มี snapshot ConDiv ของวันนั้น
     </div>
     <div>${rowsHtml || '<div style="color:var(--muted);">ยังไม่มีข้อมูล</div>'}</div>
   `;
