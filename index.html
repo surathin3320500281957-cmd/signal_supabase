@@ -2410,11 +2410,11 @@ async function renderTomorrowPrediction() {
 //   condivNoiseThreshold = 2     → RSI_NOISE_THRESHOLD ใน classifyConDiv (backend)
 //   tpRsiDropWeak = 5            → rsiDropFromPeak > 5 ใน TP Confidence (frontend)
 const REGIME_PARAMS = [
-  { key: 'wCycle',              label: 'Gate: น้ำหนักตำแหน่งในรอบ',        where: 'Turning Point Monitor (frontend)', min:0,  max:1,  step:0.05, wired:false },
-  { key: 'wBreadth',             label: 'Gate: น้ำหนัก Breadth',             where: 'Turning Point Monitor (frontend) — ควรรวมกับด้านบนได้ 1.0', min:0, max:1, step:0.05, wired:false },
-  { key: 'satPercentile',        label: 'Breadth Saturation: percentile เตือน', where: 'Turning Point Monitor (frontend)', min:50, max:99, step:1, wired:false },
+  { key: 'wCycle',              label: 'Gate: น้ำหนักตำแหน่งในรอบ',        where: 'Turning Point Monitor (frontend)', min:0,  max:1,  step:0.05, wired:true },
+  { key: 'wBreadth',             label: 'Gate: น้ำหนัก Breadth',             where: 'Turning Point Monitor (frontend) — ควรรวมกับด้านบนได้ 1.0', min:0, max:1, step:0.05, wired:true },
+  { key: 'satPercentile',        label: 'Breadth Saturation: percentile เตือน', where: 'Turning Point Monitor (frontend)', min:50, max:99, step:1, wired:true },
   { key: 'condivNoiseThreshold', label: 'ConDiv: RSI delta ขั้นต่ำ (กัน noise)', where: 'Convergence/Divergence (backend)', min:0,  max:10, step:0.5, wired:true },
-  { key: 'tpRsiDropWeak',        label: 'TP Confidence: RSI ร่วงจาก peak (อ่อนแรง)', where: 'TP Confidence (frontend)', min:0, max:20, step:0.5, wired:false },
+  { key: 'tpRsiDropWeak',        label: 'TP Confidence: RSI ร่วงจาก peak (อ่อนแรง)', where: 'TP Confidence (frontend)', min:0, max:20, step:0.5, wired:true },
 ];
 
 const REGIME_DEFAULTS = { wCycle:0.6, wBreadth:0.4, satPercentile:85, condivNoiseThreshold:2, tpRsiDropWeak:5 };
