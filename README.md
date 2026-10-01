@@ -488,6 +488,44 @@ FROM pg_constraint WHERE conname = 'ml_config_config_type_check';
 
 **วิธีทดสอบว่าผูกจริง:** ตั้งค่าให้สุดโต่งชัดๆ ในแผง (เช่น TP RSI drop = 100) → Save → Refresh → ดูว่าผลลัพธ์เปลี่ยนไปสมเหตุสมผลไหม (ไม่มีตัวไหนขึ้น "อ่อนแรง" เลยถ้า threshold สูงเกินจะแตะ) — เห็นผลต่างชัดเจน = ยืนยันว่าใช้งานจริง ไม่ใช่ UI ลอยๆ
 
+---
+
+## 📋 ConDiv ตารางรายตัว ใน "🌊 จุดเปลี่ยนรอบ" (2026-10-01, frontend)
+
+**ที่มา:** แท็บจุดเปลี่ยนรอบเดิมสรุปแค่ภาพรวมตลาด (Breadth Saturation, Divergence History) ไม่เห็นรายตัว — เพิ่มตารางที่ 4 เข้าไป โชว์สถานะ ConDiv ของทุกหุ้นใน watchlist ณ ขณะนั้น พร้อมคอลัมน์สรุปรวม HOT/OVERSOLD ไว้ท้ายตาราง ให้กดเรียง column ได้แบบตาราง Screener
+
+**คอลัมน์ (10 คอลัมน์, ชิดซ้ายทุกอัน — ต้องบังคับ `text-align:left` เพราะมี CSS กลาง `th,td{text-align:center}` ทับอยู่):**
+Symbol, ราคา, Range 14D (reuse `priceRangeConfig` เดิมที่ใช้กับ TP/SL), ตลาด/สัญญาณ (ลูกศรตัวหนา เขียว/เหลือง/แดง), สถานะ ConDiv, ΔRSI, Heat, Group RS (reuse คอลัมน์ `group_rs` ใน `stock_signals` ตรงๆ ไม่คำนวณใหม่), ML Score (reuse `composite_score` ตรงๆ), สรุป (ข้อความสีตาม sentiment)
+
+**หลักการสำคัญ:** ทุกคอลัมน์ reuse ข้อมูลที่ระบบคำนวณ/เก็บไว้แล้วจากจุดอื่น (Dashboard, TP/SL, Save to Supabase) ไม่มีจุดไหนคำนวณซ้ำหรือ query ข้อมูลใหม่หนักๆ — ดึงจาก `stock_signals` ครั้งเดียว (`order=run_seq.desc&limit=5000` ตามกฎ dedupe run_seq)
+
+**ClassifyConDiv ฝั่ง front (`classifyConDivFE`)** — พอร์ตจาก backend ตรงๆ: `marketDir` จาก `price vs ema50` (ตรงกับนิยาม Gate/Dashboard), `signalDir` จากทิศทาง RSI เฉลี่ยครึ่งหลังเทียบครึ่งแรกของ lookback เทียบ `RSI_NOISE_THRESHOLD` (ดึงจาก Config Control, default 2)
+
+**สี sentiment:** เขียว=ดี (bullish_convergence ปกติ, bullish/bearish_divergence ที่ oversold), แดง=แย่ (bearish_convergence ปกติ, อยู่โซน extreme ผิดทาง), เหลือง=กลางๆ, เทา=ข้อมูลไม่พอ (`not_enough_data`, <10 วัน)
+
+---
+
+## ⚖️ Slope (7th ML dimension) เพิ่มเข้า Front (2026-10-01)
+
+**จุดเริ่มเรื่อง:** ผู้ใช้สังเกตจากภาพ ML Analyzer ของ backend ว่า weight รวม (`Total: 6.8%`) เป็นบวก แต่ `composite_score` ที่โชว์ใน front ติดลบแทบทุกตัว → ตรวจโค้ดแล้วพบว่า**front กับ backend ใช้คนละสูตรกัน**:
+- Backend `composite()` (บรรทัด ~3242): 6 มิติ (RSI, Heat, pct50, EMAMom, Score, **Slope**) blend กับ `healthScore()` 85/15
+- Front `calcCompositeScore()` (เดิม ก่อนแก้): 6 มิติเหมือนกันแต่ใช้ **GroupRS** แทน Slope และ**ไม่มี** health blend
+
+ผลคือ front ขาด Slope ไปเลย ทำให้ net weight bias เพี้ยนจาก backend's +6.8% เหลือแค่ -1.7% (สูตรคำนวณ bias จาก magnitude ของ weight ที่ยังใช้งานจริง) — เป็นสาเหตุที่ `composite_score` ฝั่ง front ติดลบเป็นระบบ ไม่เกี่ยวกับพื้นฐานหุ้นจริง
+
+**ทางเลือกที่คุยกัน:**
+- **Option A (เลือกใช้):** เพิ่ม Slope เข้า front เฉยๆ ไม่เพิ่ม health blend ตาม (เพราะ front แยก `composite_score`/`health_score` ชัดเจนอยู่แล้วใน zone logic ปลายทาง `isHealthy`/`hasUpside`) — ML ยังเป็นแค่ "1 vote" เหมือนเดิม ไม่ให้ front หลงทางตาม ML ฝั่งเดียว
+- Option B (ไม่เลือก): ทำ parity เต็มรูปแบบกับ backend (เพิ่มทั้ง Slope และ health blend)
+
+**วิธีหา Slope โดยไม่ต้องยิง query หนัก (Option 1 ที่เลือก):** backend คำนวณ Slope จากประวัติหลาย session ที่มีอยู่แล้วใน DB (`trendSlope()`) แต่ front ไม่มีแบบนั้น จึง**จำลองด้วย localStorage** — เก็บ `quickScore` (สูตรเดียวกับ backend: `(rsiN*0.4 + pctN*0.4 + scrN*0.2) * 100`) ของทุก refresh ไว้ที่ key `quickscore_hist_<symbol>` (เก็บ 5 ค่าล่าสุด, ใช้ `pushHist()`/`getHist()` ที่มีอยู่แล้วในโค้ด) แล้วหา slope จาก `(ล่าสุด - แรกสุด) / จำนวนจุด` เหมือน backend เป๊ะ
+
+**ข้อแตกต่างที่ตั้งใจ (ไม่ใช่บั๊ก):**
+- `pctN` ของ front ใช้ fixed scale ±10% จาก EMA50 แทน `maxPct50` แบบ cross-sectional ของ backend เพราะ front ประมวลผลทีละ group ยังไม่รู้ universe เต็มตอนคำนวณ
+- Slope ที่ได้ (-1..1) ถูก remap เป็น 0..1 (`(slpN+1)/2`) ก่อนคูณ weight เพื่อให้ scale เดียวกับอีก 6 มิติใน `calcCompositeScore()` เอง — backend ใช้ -1..1 ดิบๆ ตรงๆ เป็นคนละ convention กัน แต่ weight ตัวเลขที่ใช้ (`mlConfig.weights.Slope`) เป็นตัวเดียวกับที่ backend เทรนมา
+
+**Cold-start:** ต้องมี snapshot อย่างน้อย 2 ครั้ง (2 refresh) ถึงจะเริ่มมีผล ก่อนหน้านั้น Slope = 0 เสมอ (ปลอดภัย เพราะ ML เป็นแค่ 1 โหวตใน 7 มิติ) — ไม่ต้องกังวลถ้าเพิ่งเปิดเครื่อง/browser ใหม่แล้วยังไม่เห็นผล
+
+**ผลที่ยืนยันแล้วหลัง deploy:** composite_score บางตัวเริ่มเป็นบวกแล้ว ตรงกับที่คาดไว้ตอนวิเคราะห์ bias
 
 - แก้โค้ดไม่เห็นผล → Private tab ใหม่
 - ราคาไม่ตรงข้ามแอป → เช็ค `run_seq`
@@ -503,3 +541,5 @@ FROM pg_constraint WHERE conname = 'ml_config_config_type_check';
 - **ชื่อไฟล์บน GitHub repo backend คือ `index.html`** ไม่ใช่ `index_backend.html` (ชื่อหลังเป็นแค่ชื่อเรียกในบทสนทนา) — อย่าสับสนเวลาหาไฟล์บน repo จริง
 - **คุยตัดสินใจ "จะย้ายฟีเจอร์ไปแท็บไหน" แล้วต้องเช็คโค้ดจริงว่าทำตามหรือยัง** ก่อนบอกตำแหน่งให้ผู้ใช้ไปตามหา — การคุยกันด้วยคำพูดไม่ได้แปลว่าโค้ดถูกย้ายจริงเสมอไป
 - **เจอปัญหา "ข้อมูลไม่อัพเดต/หาย" → เช็คข้อมูลจริงในฐานข้อมูลด้วย SQL ตรงๆ ก่อนเสมอ** อย่าเดาสาเหตุจากพฤติกรรมที่เห็นในแอปอย่างเดียว (เคยเดาผิดว่าเป็น `ignore-duplicates` ทั้งที่สาเหตุจริงคือ order/limit)
+- **2 ไฟล์มีฟังก์ชันคำนวณ composite/ML score คนละตัว คนละสูตรกัน (`composite()` ฝั่ง backend vs `calcCompositeScore()` ฝั่ง front)** ทั้งที่ดูเผินๆ เหมือนเป็น "ML ตัวเดียวกัน" — ก่อนเชื่อว่าตัวเลข 2 ฝั่งควรตรงกัน ต้อง grep ชื่อฟังก์ชันจริงทั้ง 2 ไฟล์เทียบ dimension ต่อ dimension ก่อนเสมอ อย่าเดาจากชื่อ/ที่มาของ weight เพียงอย่างเดียว
+- **เพิ่ม dimension ใหม่เข้าสูตรที่มีอยู่แล้ว (เช่น Slope) → เช็ค convention การ normalize ของฟังก์ชันปลายทางก่อนเสมอ** (front normalize ทุกมิติเป็น 0..1 ก่อนคูณ weight, backend ใช้ -1..1 ดิบๆ ได้บางมิติ) — copy สูตรจากอีกไฟล์ตรงๆ โดยไม่เช็ค convention จะทำให้ weight ตัวเดียวกันส่งผลต่าง scale กันระหว่าง 2 แอป
