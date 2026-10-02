@@ -396,7 +396,9 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <button class="tab-btn" onclick="switchTab('portfolio')">Portfolio</button>
   <button class="tab-btn" onclick="switchTab('stocklatest')">📊 สรุป Stock ล่าสุด</button>
   <button class="tab-btn" onclick="switchTab('ml')">🧠 ML Analyzer</button>
-  <button class="tab-btn" onclick="switchTab('forward')">📊 Forward Model</button>
+  <!-- 🙈 (2026-10-02) ซ่อนปุ่มแท็บ Forward Model จาก UI — ผู้ใช้เลิกใช้ (ค่าไม่น่าเชื่อถือ ใช้ ConDiv แทน)
+       ซ่อนด้วย display:none อย่างเดียว ไม่ลบโค้ด/แท็บเนื้อหา/ฟังก์ชัน เพื่อไม่ให้ switchTab() และส่วนอื่นพัง — อยากเอากลับลบ style ออก -->
+  <button class="tab-btn" onclick="switchTab('forward')" style="display:none;">📊 Forward Model</button>
   <button class="tab-btn" onclick="switchTab('recovery')">🔮 Recovery Forecast</button>
   <button class="tab-btn" onclick="switchTab('config')">⚙️ Config Control</button>
 </div>
@@ -734,7 +736,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
     <button class="ml-train-btn" id="conDivBtn" onclick="renderConDivLog()" style="margin-top:12px;border-color:rgba(192,132,252,.5);color:#c084fc;font-size:11px;">🗳️ บันทึก + ดู Convergence/Divergence รายวัน</button>
     <div id="conDivPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(192,132,252,.06);border:1px solid rgba(192,132,252,.25);border-radius:8px;"></div>
 
-    <button class="ml-train-btn" id="tomorrowBtn" onclick="renderTomorrowPrediction()" style="margin-top:12px;border-color:rgba(251,146,60,.5);color:#fb923c;font-size:11px;">🔮 +1D คาดการณ์ + Convergence/Divergence</button>
+    <button class="ml-train-btn" id="tomorrowBtn" onclick="renderTomorrowPrediction()" style="display:none;margin-top:12px;border-color:rgba(251,146,60,.5);color:#fb923c;font-size:11px;">🔮 +1D คาดการณ์ + Convergence/Divergence</button>
     <div id="tomorrowPanel" style="display:none;margin-top:12px;padding:12px 16px;background:rgba(251,146,60,.06);border:1px solid rgba(251,146,60,.25);border-radius:8px;"></div>
   </div>
 </main>
