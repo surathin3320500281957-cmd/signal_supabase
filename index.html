@@ -386,6 +386,7 @@ main{padding:20px 24px;max-width:1680px;margin:0 auto;}
   <span class="status-lbl" style="margin-left:10px">Updated</span>
   <span class="status-val" id="lastUpdated" style="color:var(--muted)">—</span>
   <button class="refresh-btn" id="refreshBtn" onclick="loadFromSheet()">↻ Refresh</button>
+  <button class="refresh-btn" id="exportSignalsBtn" onclick="exportStockSignalsCSV()" title="ดาวน์โหลด stock_signals ทั้งหมดจาก Supabase เป็น CSV (ไว้วิเคราะห์ย้อนหลัง)" style="margin-left:6px">⬇ Export CSV</button>
 </div>
 
 
@@ -1385,6 +1386,63 @@ async function autoTrain() {
       '| summary rows:', sumRows.length);
   } catch(e) {
     console.warn('[AutoTrain] failed:', e);
+  }
+}
+
+// ⬇ Export stock_signals ทั้งหมด (ไม่จำกัด 30 วัน) เป็น CSV — ใช้วิเคราะห์ย้อนหลังนอกแอป
+// ดึงทีละหน้า 1000 แถว (กัน max-rows ของ Supabase) เรียง run_seq → symbol_id เพื่อไม่ให้แถวซ้ำ/ตกหล่นข้ามหน้า
+async function exportStockSignalsCSV() {
+  const btn = document.getElementById('exportSignalsBtn');
+  const orig = btn.textContent;
+  btn.disabled = true;
+  try {
+    const sel = 'signal_date,session,run_seq,created_at,rsi,heat,trend,signal,confidence,smart_rank,volume_level,risk,score,price,ema20,ema50,action,composite_score,health_score,momentum_score,group_rs,group_slope,symbols(symbol,groups(name))';
+    const PAGE = 1000;
+    let rows = [], from = 0, order = 'run_seq.asc,symbol_id.asc,created_at.asc';
+    while (true) {
+      btn.textContent = `กำลังดึง ${rows.length}...`;
+      let res = await fetch(
+        `${SUPABASE_URL}/rest/v1/stock_signals?select=${sel}&order=${order}`,
+        { headers: { ...sb._hdr(), 'Range-Unit': 'items', 'Range': `${from}-${from+PAGE-1}` } }
+      );
+      if (!res.ok && order.includes('symbol_id')) {   // fallback ถ้าไม่มีคอลัมน์ symbol_id
+        order = 'run_seq.asc,created_at.asc';
+        continue;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const part = await res.json();
+      if (!Array.isArray(part)) throw new Error('response ไม่ใช่ array');
+      rows = rows.concat(part);
+      if (part.length < PAGE) break;
+      from += PAGE;
+      if (from > 200000) break;   // safety
+    }
+    if (!rows.length) throw new Error('ไม่มีข้อมูล');
+    const cols = ['signal_date','session','run_seq','created_at','symbol','group','price','rsi','heat','trend','signal','confidence','smart_rank','volume_level','risk','score','ema20','ema50','action','composite_score','health_score','momentum_score','group_rs','group_slope'];
+    const esc = v => {
+      if (v == null) return '';
+      const t = String(v);
+      return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    };
+    const lines = [cols.join(',')];
+    rows.forEach(r => {
+      const o = { ...r, symbol: r.symbols?.symbol || '', group: r.symbols?.groups?.name || '' };
+      lines.push(cols.map(c => esc(o[c])).join(','));
+    });
+    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `stock_signals_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    btn.textContent = `✓ ${rows.length} แถว`;
+    setTimeout(() => { btn.textContent = orig; }, 3000);
+  } catch (e) {
+    console.error('[ExportSignals]', e);
+    alert('Export ไม่สำเร็จ: ' + e.message);
+    btn.textContent = orig;
+  } finally {
+    btn.disabled = false;
   }
 }
 
